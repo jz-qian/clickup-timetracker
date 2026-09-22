@@ -1,7 +1,15 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware 
-from app.clickup import get_authorized_workspaces, get_spaces, get_lists, get_tasks, get_time_entries
-
+from app.clickup import (
+    get_authorized_workspaces,
+    get_spaces,
+    get_lists,
+    get_tasks,
+    get_time_entries,
+    get_project_data,
+    get_workspace_members,
+    normalize_workspace_members,
+)
 app = FastAPI()
 
 app.add_middleware(
@@ -46,3 +54,12 @@ def tasks(list_id: str):
 @app.get("/time-entries")
 def time_entries():
     return get_time_entries()
+
+@app.get("/project-data")
+def project_data():
+    return get_project_data()
+
+@app.get("/workspace-members")
+def workspace_members():
+    members = get_workspace_members()
+    return {"members": normalize_workspace_members(members)}
