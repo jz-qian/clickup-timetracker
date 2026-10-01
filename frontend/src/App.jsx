@@ -90,6 +90,366 @@ function aggregateByProject(entries) {
   return Object.values(projects)
 }
 
+// --------------------------------------------------
+// Tabs
+// --------------------------------------------------
+
+const TABS = [
+  { id: "time", label: "Time Tracking" },
+  { id: "archive", label: "Client Archive" },
+]
+
+// The active tab lives in the URL hash so #archive can be bookmarked
+// or opened in its own browser tab.
+function getTabFromHash() {
+  const id = window.location.hash.slice(1)
+  return TABS.some((tab) => tab.id === id) ? id : "time"
+}
+
+// --------------------------------------------------
+// Client Archive dashboard
+// --------------------------------------------------
+
+function formatHours(hours) {
+  return formatDuration(hours * 3600000)
+}
+
+function formatDate(isoDate) {
+  if (!isoDate) {
+    return "—"
+  }
+
+  return new Date(`${isoDate}T00:00:00`).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  })
+}
+
+function formatDaysMoved(days) {
+  if (days === null || days === undefined) {
+    return "—"
+  }
+
+  if (days === 0) {
+    return "Same day"
+  }
+
+  const label = Math.abs(days) === 1 ? "day" : "days"
+  return days > 0 ? `+${days} ${label}` : `${days} ${label}`
+}
+
+function ArchivedClientCard({ client }) {
+  return (
+    <details className="archive-client">
+      <summary>
+        <div className="archive-client-title">
+          <h3>{client.name}</h3>
+          <p>
+            {formatDate(client.first_activity)} –{" "}
+            {formatDate(client.last_activity)}
+          </p>
+        </div>
+
+        <dl className="archive-client-stats">
+          <div>
+            <dt>Hours</dt>
+            <dd>{formatHours(client.hours)}</dd>
+          </div>
+          <div>
+            <dt>Billable</dt>
+            <dd>{formatHours(client.billable_hours)}</dd>
+          </div>
+          <div>
+            <dt>Tasks done</dt>
+            <dd>
+              {client.completed_task_count}/{client.task_count}
+            </dd>
+          </div>
+          <div>
+            <dt>People</dt>
+            <dd>{client.people.length}</dd>
+          </div>
+          <div>
+            <dt>Moved deadlines</dt>
+            <dd>{client.moved_deadline_count}</dd>
+          </div>
+        </dl>
+      </summary>
+
+      <div className="archive-client-body">
+        <h4>People and roles</h4>
+
+        {client.people.length === 0 ? (
+          <p className="archive-muted">No one logged time or was assigned tasks.</p>
+        ) : (
+          <div className="table-scroll">
+            <table className="archive-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Role</th>
+                  <th className="numeric">Tasks</th>
+                  <th className="numeric">Hours</th>
+                  <th className="numeric">Billable</th>
+                  <th>Share of hours</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {client.people.map((person) => (
+                  <tr key={person.id}>
+                    <td>
+                      {person.name}
+                      {person.is_top_contributor && (
+                        <span className="badge">Top contributor</span>
+                      )}
+                      {person.email && (
+                        <span className="archive-muted archive-email">
+                          {person.email}
+                        </span>
+                      )}
+                    </td>
+                    <td>{person.actual_role || person.workspace_role}</td>
+                    <td className="numeric">{person.tasks_assigned}</td>
+                    <td className="numeric">{formatHours(person.hours)}</td>
+                    <td className="numeric">
+                      {formatHours(person.billable_hours)}
+                    </td>
+                    <td>
+                      <div className="share">
+                        <div className="share-track">
+                          <div
+                            className="share-fill"
+                            style={{ width: `${person.share_of_hours * 100}%` }}
+                          />
+                        </div>
+                        <span>{Math.round(person.share_of_hours * 100)}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <h4>Moved and late deadlines</h4>
+
+        {client.deadline_changes.length === 0 ? (
+          <p className="archive-muted">No deadlines were moved or missed.</p>
+        ) : (
+          <div className="table-scroll">
+            <table className="archive-table">
+              <thead>
+                <tr>
+                  <th>Task</th>
+                  <th>Original due</th>
+                  <th>Final due</th>
+                  <th className="numeric">Moved</th>
+                  <th>Completed</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {client.deadline_changes.map((change) => (
+                  <tr key={change.task_id}>
+                    <td>
+                      {change.url ? (
+                        <a href={change.url} target="_blank" rel="noreferrer">
+                          {change.task_name}
+                        </a>
+                      ) : (
+                        change.task_name
+                      )}
+                      {change.list_name && (
+                        <span className="archive-muted archive-email">
+                          {change.list_name}
+                        </span>
+                      )}
+                      {change.change_log.length > 0 && (
+                        <ul className="change-log">
+                          {change.change_log.map((entry, index) => (
+                            <li key={index}>
+                              {formatDate(entry.changed_at)}:{" "}
+                              {formatDate(entry.from)} → {formatDate(entry.to)}
+                              {entry.changed_by && ` by ${entry.changed_by}`}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </td>
+                    <td>{formatDate(change.original_due_date)}</td>
+                    <td>{formatDate(change.current_due_date)}</td>
+                    <td className="numeric">
+                      {formatDaysMoved(change.days_moved)}
+                      {change.times_moved > 1 && (
+                        <span className="archive-muted archive-email">
+                          {change.times_moved} times
+                        </span>
+                      )}
+                    </td>
+                    <td>
+                      {formatDate(change.completed_date)}
+                      {change.finished_late && (
+                        <span className="badge badge-late">Late</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </details>
+  )
+}
+
+function ArchiveDashboard() {
+  const [dashboard, setDashboard] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [search, setSearch] = useState("")
+  const [refreshCount, setRefreshCount] = useState(0)
+
+  useEffect(() => {
+    let ignore = false
+
+    const fetchDashboard = async () => {
+      try {
+        const response = await fetch(
+          "http://127.0.0.1:8000/archive-dashboard"
+        )
+
+        if (!response.ok) {
+          throw new Error("Could not retrieve the client archive")
+        }
+
+        const data = await response.json()
+
+        if (!ignore) {
+          setDashboard(data)
+          setError(null)
+        }
+      } catch (error) {
+        if (!ignore) {
+          setError(error.message)
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false)
+        }
+      }
+    }
+
+    fetchDashboard()
+
+    return () => {
+      ignore = true
+    }
+  }, [refreshCount])
+
+  const refresh = () => {
+    setLoading(true)
+    setRefreshCount((count) => count + 1)
+  }
+
+  const clients = (dashboard?.clients || []).filter((client) =>
+    client.name.toLowerCase().includes(search.trim().toLowerCase())
+  )
+
+  return (
+    <>
+      <div className="section-header archive-toolbar">
+        <h2>Past Clients</h2>
+
+        <div className="archive-actions">
+          <input
+            type="search"
+            placeholder="Search clients"
+            aria-label="Search clients"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+
+          <button
+            type="button"
+            onClick={refresh}
+            disabled={loading}
+          >
+            {loading ? "Loading…" : "Refresh"}
+          </button>
+        </div>
+      </div>
+
+      {error && <p className="archive-notice archive-error">Error: {error}</p>}
+
+      {loading && !dashboard && (
+        <p className="archive-muted">
+          Loading archived clients. This can take a minute because every
+          archived list and task is fetched from ClickUp.
+        </p>
+      )}
+
+      {dashboard && (
+        <>
+          {dashboard.time_entries_scope === "current_user_only" && (
+            <p className="archive-notice">
+              Hours only include your own time entries. An Owner or Admin
+              ClickUp token is needed to see everyone's hours.
+            </p>
+          )}
+
+          <section className="summary-grid archive-summary">
+            <div className="summary-card">
+              <p className="summary-label">Past Clients</p>
+              <p className="summary-value">{dashboard.totals.clients}</p>
+            </div>
+
+            <div className="summary-card">
+              <p className="summary-label">Total Hours</p>
+              <p className="summary-value">
+                {formatHours(dashboard.totals.hours)}
+              </p>
+              <p className="summary-note">
+                {formatHours(dashboard.totals.billable_hours)} billable
+              </p>
+            </div>
+
+            <div className="summary-card">
+              <p className="summary-label">People Involved</p>
+              <p className="summary-value">{dashboard.totals.people}</p>
+            </div>
+
+            <div className="summary-card">
+              <p className="summary-label">Moved Deadlines</p>
+              <p className="summary-value">
+                {dashboard.totals.moved_deadlines}
+              </p>
+              <p className="summary-note">
+                {dashboard.totals.late_tasks} finished late
+              </p>
+            </div>
+          </section>
+
+          {dashboard.clients.length === 0 ? (
+            <p className="archive-muted">No archived clients found in ClickUp.</p>
+          ) : clients.length === 0 ? (
+            <p className="archive-muted">No clients match “{search}”.</p>
+          ) : (
+            <div className="archive-client-list">
+              {clients.map((client) => (
+                <ArchivedClientCard key={client.id} client={client} />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </>
+  )
+}
+
 function App() {
   // States
   const [spaces, setSpaces] = useState([])
@@ -100,7 +460,28 @@ function App() {
 
   const [dateFilter, setDateFilter] = useState("all")
   const [clientFilter, setClientFilter] = useState("all")
-  const [userFilter, setUserFilter] = useState("all") 
+  const [userFilter, setUserFilter] = useState("all")
+
+  const [activeTab, setActiveTab] = useState(getTabFromHash)
+  // The archive tab is only mounted once it's first opened, since its
+  // endpoint is slow, and then kept mounted so switching back is instant.
+  const [archiveOpened, setArchiveOpened] = useState(
+    () => getTabFromHash() === "archive"
+  )
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      const tab = getTabFromHash()
+      setActiveTab(tab)
+
+      if (tab === "archive") {
+        setArchiveOpened(true)
+      }
+    }
+
+    window.addEventListener("hashchange", handleHashChange)
+    return () => window.removeEventListener("hashchange", handleHashChange)
+  }, [])
 
   // --------------------------------------------------
   // Fetch Spaces
@@ -372,6 +753,31 @@ const entriesWithParents = filteredTimeEntries.map((entry) => {
         </div>
       </header>
 
+      <nav className="tabs" role="tablist" aria-label="Dashboard views">
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            id={`tab-${tab.id}`}
+            aria-selected={activeTab === tab.id}
+            aria-controls={`panel-${tab.id}`}
+            className="tab"
+            onClick={() => {
+              window.location.hash = tab.id
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </nav>
+
+      <div
+        role="tabpanel"
+        id="panel-time"
+        aria-labelledby="tab-time"
+        hidden={activeTab !== "time"}
+      >
      <section className="summary-grid">
         <div className="summary-card">
           <p className="summary-label">Total Time</p>
@@ -576,6 +982,18 @@ const entriesWithParents = filteredTimeEntries.map((entry) => {
               </div>
             )
           })}
+        </div>
+      )}
+      </div>
+
+      {archiveOpened && (
+        <div
+          role="tabpanel"
+          id="panel-archive"
+          aria-labelledby="tab-archive"
+          hidden={activeTab !== "archive"}
+        >
+          <ArchiveDashboard />
         </div>
       )}
     </div>
