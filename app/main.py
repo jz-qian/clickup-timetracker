@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware 
 from app.clickup import (
     get_authorized_workspaces,
@@ -9,6 +9,9 @@ from app.clickup import (
     get_project_data,
     get_workspace_members,
     normalize_workspace_members,
+    get_archived_client_dashboard,
+    verify_webhook_signature,
+    record_deadline_changes,
 )
 app = FastAPI()
 
@@ -63,3 +66,17 @@ def project_data():
 def workspace_members():
     members = get_workspace_members()
     return {"members": normalize_workspace_members(members)}
+
+@app.get("/archive-dashboard")
+def archive_dashboard():
+    return get_archived_client_dashboard()
+
+@app.post("/webhooks/clickup")
+async def clickup_webhook(request: Request):
+    body = await request.body()
+
+    if not verify_webhook_signature(body, request.headers.get("X-Signature")):
+        raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
+    recorded = record_deadline_changes(await request.json())
+    return {"recorded": recorded}
