@@ -7,7 +7,7 @@ This repository provides a small ClickUp time-tracker frontend (Vite + React) an
 Prerequisites
 
 - Python 3.10+ (3.11 recommended)
-- Node.js 20.x (or recent LTS)
+- Node.js 20.19+ or 22.12+ (Vite 8 won't start on older versions; check with `node --version`)
 - npm (or yarn)
 
 1) Backend (FastAPI)
@@ -59,6 +59,8 @@ Notes:
 
 - If the frontend shows stale content, hard-refresh the browser (Cmd/Ctrl+Shift+R) or open an Incognito window and unregister any Service Worker in DevTools.
 - If you see CORS errors, ensure the backend is running and restarted after configuration changes. The backend allows the common Vite dev origins by default.
+- If the page shows "Could not reach the backend", start uvicorn from the repo root (not from inside `app/`), since it imports `app.main`.
+- If the page says `CLICKUP_API_TOKEN` is not set, create the `.env` file in the repo root (next to this README), then restart uvicorn.
 - If API responses are empty, confirm your `CLICKUP_API_TOKEN` and `CLICKUP_WORKSPACE_ID` values and that the token has the necessary permissions.
 
 ## Useful commands

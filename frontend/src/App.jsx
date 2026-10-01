@@ -1,13 +1,41 @@
-import { useEffect, useState } from "react"
+import { Fragment, useEffect, useState } from "react"
+
+const API_URL = "http://127.0.0.1:8000"
+
+// Fetch JSON from the backend, throwing the backend's error message
+// (e.g. a missing ClickUp token) instead of a generic one.
+async function fetchJson(path, fallbackMessage) {
+  let response
+
+  try {
+    response = await fetch(`${API_URL}${path}`)
+  } catch {
+    throw new Error(
+      `Could not reach the backend at ${API_URL}. Is uvicorn running?`
+    )
+  }
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}))
+    throw new Error(body.detail || fallbackMessage)
+  }
+
+  return response.json()
+}
+
+// ClickUp returns task.parent as the parent's id (a string), or null
+function getParentId(task) {
+  return task.parent?.id ?? task.parent ?? null
+}
 
 // Organize flat task data into parent tasks with their subtasks
 function organizeTasks(tasks) {
-  const parentTasks = tasks.filter((task) => !task.parent)
+  const parentTasks = tasks.filter((task) => !getParentId(task))
 
   return parentTasks.map((task) => ({
     ...task,
     subtasks: tasks.filter(
-      (subtask) => subtask.parent?.id === task.id
+      (subtask) => getParentId(subtask) === task.id
     ),
   }))
 }
@@ -318,15 +346,10 @@ function ArchiveDashboard() {
 
     const fetchDashboard = async () => {
       try {
-        const response = await fetch(
-          "http://127.0.0.1:8000/archive-dashboard"
+        const data = await fetchJson(
+          "/archive-dashboard",
+          "Could not retrieve the client archive"
         )
-
-        if (!response.ok) {
-          throw new Error("Could not retrieve the client archive")
-        }
-
-        const data = await response.json()
 
         if (!ignore) {
           setDashboard(data)
@@ -606,16 +629,9 @@ const entriesWithParents = filteredTimeEntries.map((entry) => {
   const projects = aggregateByProject(filteredTimeEntries)
 
     useEffect(() => {
-      fetch("http://127.0.0.1:8000/spaces")
-        .then((response) => {
-          if (!response.ok) {
-            throw new Error("Could not retrieve Spaces")
-          }
-
-          return response.json()
-        })
+      fetchJson("/spaces", "Could not retrieve Spaces")
         .then((data) => {
-          setSpaces(data.spaces)
+          setSpaces(data.spaces || [])
         })
         .catch((error) => {
           setError(error.message)
@@ -636,7 +652,7 @@ const entriesWithParents = filteredTimeEntries.map((entry) => {
         const results = await Promise.all(
           spaces.map(async (space) => {
             const response = await fetch(
-              `http://127.0.0.1:8000/spaces/${space.id}/lists`
+              `${API_URL}/spaces/${space.id}/lists`
             )
 
             if (!response.ok) {
@@ -682,15 +698,10 @@ const entriesWithParents = filteredTimeEntries.map((entry) => {
       try {
         const results = await Promise.all(
           lists.map((list) =>
-            fetch(
-              `http://127.0.0.1:8000/lists/${list.id}/tasks`
-            ).then((response) => {
-              if (!response.ok) {
-                throw new Error("Could not retrieve tasks")
-              }
-
-              return response.json()
-            })
+            fetchJson(
+              `/lists/${list.id}/tasks`,
+              "Could not retrieve tasks"
+            )
           )
         )
 
@@ -718,15 +729,10 @@ const entriesWithParents = filteredTimeEntries.map((entry) => {
   useEffect(() => {
     const fetchTimeEntries = async () => {
       try {
-        const response = await fetch(
-          "http://127.0.0.1:8000/time-entries"
+        const data = await fetchJson(
+          "/time-entries",
+          "Could not retrieve time entries"
         )
-
-        if (!response.ok) {
-          throw new Error("Could not retrieve time entries")
-        }
-
-        const data = await response.json()
 
         setTimeEntries(normalizeTimeEntries(data.data || []))
       } catch (error) {
@@ -778,6 +784,8 @@ const entriesWithParents = filteredTimeEntries.map((entry) => {
         aria-labelledby="tab-time"
         hidden={activeTab !== "time"}
       >
+      {error && <p className="archive-notice archive-error">Error: {error}</p>}
+
      <section className="summary-grid">
         <div className="summary-card">
           <p className="summary-label">Total Time</p>
@@ -882,8 +890,8 @@ const entriesWithParents = filteredTimeEntries.map((entry) => {
               )
 
               return (
-                <>
-                  <tr key={project.id}>
+                <Fragment key={project.id}>
+                  <tr>
                     <td>{project.name}</td>
 
                     <td>{formatDuration(project.total)}</td>
@@ -908,19 +916,17 @@ const entriesWithParents = filteredTimeEntries.map((entry) => {
                       <td></td>
                     </tr>
                   ))}
-                </>
+                </Fragment>
               )
             })}
           </tbody>
         </table>
-      {/* Error message */}
-      {error && <p>Error: {error}</p>}
 
       {/* Time Entries */}
       <h2>Time Entries</h2>
 
       <ul>
-        {filteredTimeEntries.map((entry) => (
+        {entriesWithParents.map((entry) => (
           <li key={entry.id}>
             {entry.parentTaskName} — {formatDuration(entry.duration)} —{" "}
             {entry.billable ? "Billable" : "Non-billable"}

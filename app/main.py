@@ -1,5 +1,8 @@
+import requests
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware 
+from fastapi.responses import JSONResponse
+from app import clickup
 from app.clickup import (
     get_authorized_workspaces,
     get_spaces,
@@ -17,17 +20,35 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "http://localhost:5175",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:5175",
-    ],
+    # Vite moves to the next free port (5174, 5175, ...) when 5173 is taken,
+    # so allow any local port.
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Errors are returned as JSON from these handlers rather than left unhandled:
+# an unhandled error skips the CORS middleware, so the browser only reports
+# "Failed to fetch" and the real reason never reaches the frontend.
+
+@app.exception_handler(RuntimeError)
+def config_error(request: Request, error: RuntimeError):
+    return JSONResponse(status_code=500, content={"detail": str(error)})
+
+@app.exception_handler(requests.RequestException)
+def clickup_error(request: Request, error: requests.RequestException):
+    if not clickup.token or not clickup.workspace_id:
+        detail = (
+            "CLICKUP_API_TOKEN and CLICKUP_WORKSPACE_ID must be set in the "
+            ".env file in the project root"
+        )
+    elif error.response is not None:
+        detail = f"ClickUp returned {error.response.status_code}: {error.response.text[:300]}"
+    else:
+        detail = f"Could not reach ClickUp: {error}"
+
+    return JSONResponse(status_code=502, content={"detail": detail})
 
 @app.get("/")
 def home():
