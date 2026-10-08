@@ -386,7 +386,7 @@ const entriesWithParents = filteredTimeEntries.map((entry) => {
       <nav>
         <button onClick={() => setActiveTab("time")}>Time Tracking</button>
         <button onClick={() => setActiveTab("archive")}>Archived Clients</button>
-        <button onClick={() => setActiveTab("ai")}>AI Estimator</button>
+        <button onClick={() => setActiveTab("ai")}>AI Agents</button>
       </nav>
 
       {activeTab === "archive" && <ArchiveDashboard />}

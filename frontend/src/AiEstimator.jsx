@@ -34,6 +34,11 @@ function AiEstimator() {
   const [connected, setConnected] = useState(false)
   const [connecting, setConnecting] = useState(false)
 
+  // The company the key belongs to, and the agents that key can run
+  const [providerName, setProviderName] = useState("")
+  const [agents, setAgents] = useState([])
+  const [agentId, setAgentId] = useState("")
+
   const [projects, setProjects] = useState([])
   const [historySize, setHistorySize] = useState(null)
   const [projectId, setProjectId] = useState("")
@@ -53,7 +58,7 @@ function AiEstimator() {
     setError(null)
 
     try {
-      await postJson("/ai/connect", { api_key: apiKey })
+      const connection = await postJson("/ai/connect", { api_key: apiKey })
 
       const response = await fetch(`${API_URL}/ai/projects`)
       if (!response.ok) {
@@ -64,6 +69,9 @@ function AiEstimator() {
       setProjects(data.projects)
       setHistorySize(data.completed_task_count)
       setProjectId((current) => current || data.projects[0]?.id || "")
+      setProviderName(connection.provider_name)
+      setAgents(connection.agents)
+      setAgentId(connection.agents[0]?.id || "")
       setConnected(true)
     } catch (error) {
       setError(error.message)
@@ -79,8 +87,9 @@ function AiEstimator() {
 
     try {
       setEstimate(
-        await postJson("/ai/estimate", {
+        await postJson("/ai/run", {
           api_key: apiKey,
+          agent_id: agentId,
           task_name: taskName,
           task_description: taskDescription,
         })
@@ -122,11 +131,11 @@ function AiEstimator() {
 
   return (
     <div>
-      <h2>AI Estimator</h2>
+      <h2>AI Agents</h2>
 
       <h3>1. Connect</h3>
       <p>
-        <label htmlFor="ai-key">Anthropic API key </label>
+        <label htmlFor="ai-key">API key </label>
         <input
           id="ai-key"
           type="password"
@@ -136,25 +145,46 @@ function AiEstimator() {
             setApiKey(event.target.value)
             setConnected(false)
           }}
-          placeholder="sk-ant-..."
+          placeholder="Your company's AI API key"
         />{" "}
         <button onClick={connect} disabled={connecting}>
           {connecting ? "Connecting..." : "Connect"}
         </button>
       </p>
       <p>
-        Leave blank to use the backend's ANTHROPIC_API_KEY. The key is only
-        kept while this page is open.
+        Supported: Anthropic (sk-ant-...). Leave blank to use the backend's
+        own key. The key is only kept while this page is open.
       </p>
       {connected && (
-        <p>Connected. {historySize} completed tasks with tracked time available.</p>
+        <p>
+          Connected to {providerName}. {historySize} completed tasks with
+          tracked time available.
+        </p>
       )}
 
       {error && <p>Error: {error}</p>}
 
       {connected && (
         <>
-          <h3>2. Project</h3>
+          <h3>2. Agent</h3>
+          <p>
+            <select
+              value={agentId}
+              onChange={(event) => {
+                setAgentId(event.target.value)
+                setEstimate(null)
+              }}
+            >
+              {agents.map((agent) => (
+                <option key={agent.id} value={agent.id}>
+                  {agent.name}
+                </option>
+              ))}
+            </select>{" "}
+            {agents.find((agent) => agent.id === agentId)?.description}
+          </p>
+
+          <h3>3. Project</h3>
           <p>
             <select
               value={projectId}
@@ -168,7 +198,7 @@ function AiEstimator() {
             </select>
           </p>
 
-          <h3>3. New task</h3>
+          <h3>4. New task</h3>
           <p>
             <label htmlFor="ai-task-name">Task name </label>
             <input
@@ -191,7 +221,7 @@ function AiEstimator() {
           <p>
             <button
               onClick={runEstimate}
-              disabled={estimating || !taskName.trim()}
+              disabled={estimating || !agentId || !taskName.trim()}
             >
               {estimating ? "Estimating (this can take a minute)..." : "Estimate"}
             </button>
