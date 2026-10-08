@@ -17,8 +17,8 @@ Prerequisites
 python3 -m venv .venv
 source .venv/bin/activate
 
-# install backend dependencies
-python -m pip install -r requirements.txt
+# install core dependencies (if you have a requirements file, use that)
+pip install fastapi uvicorn python-dotenv requests anthropic
 
 # run the backend (from repo root)
 python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
@@ -42,6 +42,7 @@ CLICKUP_API_TOKEN=your_clickup_api_token_here
 CLICKUP_WORKSPACE_ID=90148016204   # keep your current ID formatting
 CLICKUP_SPACE_ID=90148016204       # optional - used by some helper functions
 BACKEND_URL=http://127.0.0.1:8000  # optional override used by the frontend
+ANTHROPIC_API_KEY=your_anthropic_key  # optional - used by the AI Estimator tab when no key is entered there
 ```
 
 Notes:
