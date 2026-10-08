@@ -1,11 +1,16 @@
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 import hashlib
 import hmac
 import json
+import logging
 import os
+import threading
+import time
 import requests
+from requests.adapters import HTTPAdapter
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -231,9 +236,22 @@ CLICKUP_ROLE_NAMES = {1: "Owner", 2: "Admin", 3: "Member", 4: "Guest"}
 MS_PER_HOUR = 3_600_000
 MS_PER_DAY = 86_400_000
 
+# Parallel ClickUp requests per batch. Parallelism doesn't change the number
+# of requests, only how long they take, so it doesn't add to rate limiting.
+MAX_PARALLEL_REQUESTS = 8
+
+# How long a built archive dashboard is served before a background rebuild.
+DASHBOARD_TTL_SECONDS = 10 * 60
+
+logger = logging.getLogger(__name__)
+
+# Reuse connections across requests instead of a new TLS handshake each time.
+_session = requests.Session()
+_session.mount("https://", HTTPAdapter(pool_maxsize=MAX_PARALLEL_REQUESTS * 2))
+
 
 def _clickup_get(path, params=None):
-    response = requests.get(
+    response = _session.get(
         f"{BASE_URL}{path}",
         headers={
             "Authorization": token,
@@ -566,15 +584,13 @@ def get_archived_client_dashboard():
     deadline_log = load_deadline_log()
     now_ms = int(datetime.now(tz=timezone.utc).timestamp() * 1000)
 
-    clients = []
-    scopes = set()
-
-    for space in get_archived_spaces():
+    def build_client(space):
         lists = get_all_lists_in_space(space["id"])
 
-        tasks = []
-        for current_list in lists:
-            tasks.extend(get_all_tasks(current_list["id"]))
+        # Separate pool from the per-space one, so nested work can't deadlock.
+        with ThreadPoolExecutor(MAX_PARALLEL_REQUESTS) as pool:
+            task_batches = pool.map(get_all_tasks, [current_list["id"] for current_list in lists])
+            tasks = [task for batch in task_batches for task in batch]
 
         # Ask for time entries from the client's first task onward, since the
         # endpoint only covers the last 30 days by default.
@@ -582,11 +598,17 @@ def get_archived_client_dashboard():
         start_ms = min((date for date in created_dates if date), default=0)
 
         time_entries, scope = get_space_time_entries(space["id"], assignee_ids, start_ms, now_ms)
-        scopes.add(scope)
 
-        clients.append(summarize_archived_client(
+        client = summarize_archived_client(
             space, lists, tasks, time_entries, members_by_id, deadline_log,
-        ))
+        )
+        return client, scope
+
+    with ThreadPoolExecutor(MAX_PARALLEL_REQUESTS) as pool:
+        results = list(pool.map(build_client, get_archived_spaces()))
+
+    clients = [client for client, _ in results]
+    scopes = {scope for _, scope in results}
 
     clients.sort(key=lambda client: client["last_activity"] or "", reverse=True)
     all_people = {person["id"] for client in clients for person in client["people"]}
@@ -605,3 +627,52 @@ def get_archived_client_dashboard():
         },
         "clients": clients,
     }
+
+
+# --------------------------------------------------
+# Archive dashboard cache
+# --------------------------------------------------
+# Building the dashboard takes many ClickUp requests, so it is built once
+# (at startup) and served from memory. Once older than the TTL, the cached
+# copy is still served while a fresh one is built in the background.
+
+_dashboard_cache = {"data": None, "built_at": 0.0}
+_dashboard_lock = threading.Lock()
+
+
+def _rebuild_dashboard():
+    seen_built_at = _dashboard_cache["built_at"]
+
+    with _dashboard_lock:
+        # Another caller finished a build while we waited for the lock.
+        if _dashboard_cache["built_at"] != seen_built_at and _dashboard_cache["data"] is not None:
+            return _dashboard_cache["data"]
+
+        data = get_archived_client_dashboard()
+        _dashboard_cache.update(data=data, built_at=time.monotonic())
+        return data
+
+
+def _rebuild_dashboard_safely():
+    try:
+        _rebuild_dashboard()
+    except Exception:
+        logger.exception("Could not build the archive dashboard")
+
+
+def refresh_dashboard_in_background():
+    if _dashboard_lock.locked():
+        return
+    threading.Thread(target=_rebuild_dashboard_safely, daemon=True).start()
+
+
+def get_cached_archived_client_dashboard(force_refresh=False):
+    cached = _dashboard_cache["data"]
+
+    if cached is None or force_refresh:
+        return _rebuild_dashboard()
+
+    if time.monotonic() - _dashboard_cache["built_at"] > DASHBOARD_TTL_SECONDS:
+        refresh_dashboard_in_background()
+
+    return cached

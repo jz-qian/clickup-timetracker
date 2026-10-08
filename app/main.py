@@ -9,11 +9,19 @@ from app.clickup import (
     get_project_data,
     get_workspace_members,
     normalize_workspace_members,
-    get_archived_client_dashboard,
+    get_cached_archived_client_dashboard,
+    refresh_dashboard_in_background,
     verify_webhook_signature,
     record_deadline_changes,
 )
 app = FastAPI()
+
+
+@app.on_event("startup")
+def warm_archive_dashboard():
+    # Build the archive dashboard before anyone opens it.
+    refresh_dashboard_in_background()
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -68,8 +76,8 @@ def workspace_members():
     return {"members": normalize_workspace_members(members)}
 
 @app.get("/archive-dashboard")
-def archive_dashboard():
-    return get_archived_client_dashboard()
+def archive_dashboard(refresh: bool = False):
+    return get_cached_archived_client_dashboard(force_refresh=refresh)
 
 @app.post("/webhooks/clickup")
 async def clickup_webhook(request: Request):
@@ -79,4 +87,6 @@ async def clickup_webhook(request: Request):
         raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
     recorded = record_deadline_changes(await request.json())
+    if recorded:
+        refresh_dashboard_in_background()
     return {"recorded": recorded}

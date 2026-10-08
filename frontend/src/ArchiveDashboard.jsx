@@ -1,19 +1,20 @@
 import { useEffect, useState } from "react"
+import {
+  getLoadedArchiveDashboard,
+  loadArchiveDashboard,
+} from "./archiveDashboardData.js"
 
 // Line-by-line view of GET /archive-dashboard (archived clients summary)
 function ArchiveDashboard() {
-  const [data, setData] = useState(null)
+  const [data, setData] = useState(getLoadedArchiveDashboard)
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    fetch("http://127.0.0.1:8000/archive-dashboard")
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("Could not retrieve archive dashboard")
-        }
+    if (getLoadedArchiveDashboard()) {
+      return
+    }
 
-        return response.json()
-      })
+    loadArchiveDashboard()
       .then(setData)
       .catch((error) => {
         setError(error.message)

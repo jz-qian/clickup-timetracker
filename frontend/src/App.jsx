@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import ArchiveDashboard from "./ArchiveDashboard.jsx"
+import { loadArchiveDashboard } from "./archiveDashboardData.js"
 
 // Organize flat task data into parent tasks with their subtasks
 function organizeTasks(tasks) {
@@ -332,6 +333,12 @@ const entriesWithParents = filteredTimeEntries.map((entry) => {
 
     fetchTasks()
   }, [lists])
+
+  // Start loading the archive dashboard in the background so it's ready
+  // by the time its tab is opened
+  useEffect(() => {
+    loadArchiveDashboard().catch(() => {})
+  }, [])
 
   // --------------------------------------------------
   // Fetch Time Entries
