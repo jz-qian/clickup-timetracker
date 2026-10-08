@@ -630,49 +630,56 @@ def get_archived_client_dashboard():
 
 
 # --------------------------------------------------
-# Archive dashboard cache
+# Background-refreshed caches
 # --------------------------------------------------
-# Building the dashboard takes many ClickUp requests, so it is built once
+# Some views take many ClickUp requests to build, so they are built once
 # (at startup) and served from memory. Once older than the TTL, the cached
 # copy is still served while a fresh one is built in the background.
 
-_dashboard_cache = {"data": None, "built_at": 0.0}
-_dashboard_lock = threading.Lock()
+class BackgroundCache:
+    def __init__(self, name, build, ttl_seconds):
+        self.name = name
+        self._build = build
+        self._ttl_seconds = ttl_seconds
+        self._data = None
+        self._built_at = 0.0
+        self._lock = threading.Lock()
+
+    def _rebuild(self):
+        seen_built_at = self._built_at
+
+        with self._lock:
+            # Another caller finished a build while we waited for the lock.
+            if self._built_at != seen_built_at and self._data is not None:
+                return self._data
+
+            self._data = self._build()
+            self._built_at = time.monotonic()
+            return self._data
+
+    def _rebuild_safely(self):
+        try:
+            self._rebuild()
+        except Exception:
+            logger.exception("Could not build the %s", self.name)
+
+    def refresh_in_background(self):
+        if self._lock.locked():
+            return
+        threading.Thread(target=self._rebuild_safely, daemon=True).start()
+
+    def get(self, force_refresh=False):
+        cached = self._data
+
+        if cached is None or force_refresh:
+            return self._rebuild()
+
+        if time.monotonic() - self._built_at > self._ttl_seconds:
+            self.refresh_in_background()
+
+        return cached
 
 
-def _rebuild_dashboard():
-    seen_built_at = _dashboard_cache["built_at"]
-
-    with _dashboard_lock:
-        # Another caller finished a build while we waited for the lock.
-        if _dashboard_cache["built_at"] != seen_built_at and _dashboard_cache["data"] is not None:
-            return _dashboard_cache["data"]
-
-        data = get_archived_client_dashboard()
-        _dashboard_cache.update(data=data, built_at=time.monotonic())
-        return data
-
-
-def _rebuild_dashboard_safely():
-    try:
-        _rebuild_dashboard()
-    except Exception:
-        logger.exception("Could not build the archive dashboard")
-
-
-def refresh_dashboard_in_background():
-    if _dashboard_lock.locked():
-        return
-    threading.Thread(target=_rebuild_dashboard_safely, daemon=True).start()
-
-
-def get_cached_archived_client_dashboard(force_refresh=False):
-    cached = _dashboard_cache["data"]
-
-    if cached is None or force_refresh:
-        return _rebuild_dashboard()
-
-    if time.monotonic() - _dashboard_cache["built_at"] > DASHBOARD_TTL_SECONDS:
-        refresh_dashboard_in_background()
-
-    return cached
+archive_dashboard_cache = BackgroundCache(
+    "archive dashboard", get_archived_client_dashboard, DASHBOARD_TTL_SECONDS,
+)
