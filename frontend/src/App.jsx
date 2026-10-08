@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import ArchiveDashboard from "./ArchiveDashboard.jsx"
 
 // Organize flat task data into parent tasks with their subtasks
 function organizeTasks(tasks) {
@@ -101,6 +102,8 @@ function App() {
   const [dateFilter, setDateFilter] = useState("all")
   const [clientFilter, setClientFilter] = useState("all")
   const [userFilter, setUserFilter] = useState("all") 
+
+  const [activeTab, setActiveTab] = useState("time")
 
   // --------------------------------------------------
   // Fetch Spaces
@@ -372,6 +375,15 @@ const entriesWithParents = filteredTimeEntries.map((entry) => {
         </div>
       </header>
 
+      <nav>
+        <button onClick={() => setActiveTab("time")}>Time Tracking</button>
+        <button onClick={() => setActiveTab("archive")}>Archived Clients</button>
+      </nav>
+
+      {activeTab === "archive" && <ArchiveDashboard />}
+
+      {activeTab === "time" && (
+      <>
      <section className="summary-grid">
         <div className="summary-card">
           <p className="summary-label">Total Time</p>
@@ -521,62 +533,7 @@ const entriesWithParents = filteredTimeEntries.map((entry) => {
           </li>
         ))}
       </ul>
-
-      {/* Loading state */}
-      {!error && spaces.length === 0 && (
-        <p>Loading Spaces...</p>
-      )}
-
-      {/* Space → List → Task → Subtask hierarchy */}
-      {spaces.length > 0 && (
-        <div>
-          {spaces.map((space) => {
-            const spaceLists = lists.filter(
-              (list) => list.spaceId === space.id
-            )
-
-            return (
-              <div key={space.id}>
-                <h2>
-                  {space.name} — Space ID: {space.id}
-                </h2>
-
-                {spaceLists.map((list) => {
-                  const listTasks = tasks.filter(
-                    (task) => task.listId === list.id
-                  )
-
-                  return (
-                    <div key={list.id}>
-                      <h3>
-                        {list.name} — List ID: {list.id}
-                      </h3>
-
-                      <ul>
-                        {listTasks.map((task) => (
-                          <li key={task.id}>
-                            {task.name} — Task ID: {task.id}
-
-                            {task.subtasks.length > 0 && (
-                              <ul>
-                                {task.subtasks.map((subtask) => (
-                                  <li key={subtask.id}>
-                                    {subtask.name} — Subtask ID:{" "}
-                                    {subtask.id}
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )
-                })}
-              </div>
-            )
-          })}
-        </div>
+      </>
       )}
     </div>
   )
