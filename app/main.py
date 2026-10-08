@@ -1,6 +1,5 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware 
-from pydantic import BaseModel
 from app.clickup import (
     get_authorized_workspaces,
     get_spaces,
@@ -14,20 +13,15 @@ from app.clickup import (
     verify_webhook_signature,
     record_deadline_changes,
 )
-from app.estimator import (
-    EstimatorError,
-    check_api_key,
-    estimate_task,
-    task_history_cache,
-)
+from app.ai_routes import router as ai_router
 app = FastAPI()
+app.include_router(ai_router)
 
 
 @app.on_event("startup")
 def warm_archive_dashboard():
-    # Build the slow views before anyone opens them.
+    # Build the archive dashboard before anyone opens it.
     archive_dashboard_cache.refresh_in_background()
-    task_history_cache.refresh_in_background()
 
 
 app.add_middleware(
@@ -97,52 +91,3 @@ async def clickup_webhook(request: Request):
     if recorded:
         archive_dashboard_cache.refresh_in_background()
     return {"recorded": recorded}
-
-
-# --------------------------------------------------
-# AI estimator
-# --------------------------------------------------
-# The API key comes from the browser with each request and is only used for
-# that request. If it's blank, the backend's own ANTHROPIC_API_KEY is used.
-
-class ConnectRequest(BaseModel):
-    api_key: str = ""
-
-
-class EstimateRequest(BaseModel):
-    api_key: str = ""
-    task_name: str
-    task_description: str = ""
-
-
-@app.get("/ai/projects")
-def ai_projects():
-    history = task_history_cache.get()
-    return {
-        "projects": history["projects"],
-        "completed_task_count": len(history["completed_tasks"]),
-    }
-
-
-@app.post("/ai/connect")
-def ai_connect(body: ConnectRequest):
-    try:
-        check_api_key(body.api_key.strip())
-    except EstimatorError as error:
-        raise HTTPException(status_code=400, detail=str(error))
-    return {"connected": True}
-
-
-@app.post("/ai/estimate")
-def ai_estimate(body: EstimateRequest):
-    if not body.task_name.strip():
-        raise HTTPException(status_code=400, detail="Enter a task name.")
-
-    try:
-        return estimate_task(
-            body.api_key.strip(),
-            body.task_name.strip(),
-            body.task_description.strip(),
-        )
-    except EstimatorError as error:
-        raise HTTPException(status_code=400, detail=str(error))
