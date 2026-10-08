@@ -378,9 +378,13 @@ const entriesWithParents = filteredTimeEntries.map((entry) => {
       <nav>
         <button onClick={() => setActiveTab("time")}>Time Tracking</button>
         <button onClick={() => setActiveTab("archive")}>Archived Clients</button>
+        <button onClick={() => setActiveTab("third")}>Tab 3</button>
       </nav>
 
       {activeTab === "archive" && <ArchiveDashboard />}
+
+      {/* Placeholder tab, intentionally empty for now */}
+      {activeTab === "third" && <div />}
 
       {activeTab === "time" && (
       <>
