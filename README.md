@@ -13,15 +13,15 @@ Prerequisites
 1) Backend (FastAPI)
 
 ```bash
-# create and activate a virtual environment
+# create a project-local virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
 
-# install core dependencies (if you have a requirements file, use that)
-pip install fastapi uvicorn python-dotenv requests
+# install backend dependencies
+python -m pip install -r requirements.txt
 
 # run the backend (from repo root)
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 2) Frontend (Vite + React)
