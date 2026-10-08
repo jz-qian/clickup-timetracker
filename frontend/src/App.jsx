@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import AiEstimator from "./AiEstimator.jsx"
 import ArchiveDashboard from "./ArchiveDashboard.jsx"
 import { loadArchiveDashboard } from "./archiveDashboardData.js"
 
@@ -385,13 +386,15 @@ const entriesWithParents = filteredTimeEntries.map((entry) => {
       <nav>
         <button onClick={() => setActiveTab("time")}>Time Tracking</button>
         <button onClick={() => setActiveTab("archive")}>Archived Clients</button>
-        <button onClick={() => setActiveTab("third")}>Tab 3</button>
+        <button onClick={() => setActiveTab("ai")}>AI Estimator</button>
       </nav>
 
       {activeTab === "archive" && <ArchiveDashboard />}
 
-      {/* Placeholder tab, intentionally empty for now */}
-      {activeTab === "third" && <div />}
+      {/* Kept mounted so the key and estimates survive switching tabs */}
+      <div hidden={activeTab !== "ai"}>
+        <AiEstimator />
+      </div>
 
       {activeTab === "time" && (
       <>
