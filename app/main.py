@@ -3,8 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.clickup import (
     get_authorized_workspaces,
     get_spaces,
-    get_lists,
-    get_tasks,
+    get_all_lists_in_space,
+    get_all_tasks,
     get_time_entries,
     get_project_data,
     get_workspace_members,
@@ -58,12 +58,14 @@ def spaces():
 
 @app.get("/spaces/{space_id}/lists")
 def lists(space_id: str):
-    return get_lists(space_id)
+    # Lists in folders too, not just the space's folderless lists
+    return {"lists": get_all_lists_in_space(space_id)}
 
 
 @app.get("/lists/{list_id}/tasks")
 def tasks(list_id: str):
-    return get_tasks(list_id)
+    # Every page of tasks, including closed ones and subtasks
+    return {"tasks": get_all_tasks(list_id)}
 
 @app.get("/time-entries")
 def time_entries():

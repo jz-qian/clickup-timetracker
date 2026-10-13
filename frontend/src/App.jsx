@@ -1,41 +1,32 @@
-import { Fragment, useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import AiEstimator from "./AiEstimator.jsx"
 import ArchiveDashboard from "./ArchiveDashboard.jsx"
 import TeamCapacity from "./TeamCapacity.jsx"
+import TimeBreakdown from "./TimeBreakdown.jsx"
+import { formatDuration } from "./timeFormat.js"
 import { loadArchiveDashboard } from "./archiveDashboardData.js"
 
 const WEEKLY_HOURS_PER_PERSON = 40
 const BILLABLE_TARGET_RATIO = 0.8
 const TEAM_SIZE_STORAGE_KEY = "clickup-time-tracker-team-size"
 
-// Organize flat task data into parent tasks with their subtasks
+// ClickUp sends a subtask's parent as a task id string
+function parentId(task) {
+  return typeof task.parent === "object" ? task.parent?.id : task.parent
+}
+
+// Organize flat task data into parent tasks with their subtasks.
+// A subtask whose parent isn't loaded is kept as a top-level task.
 function organizeTasks(tasks) {
-  const parentTasks = tasks.filter((task) => !task.parent)
+  const taskIds = new Set(tasks.map((task) => task.id))
+  const parentTasks = tasks.filter(
+    (task) => !parentId(task) || !taskIds.has(parentId(task))
+  )
 
   return parentTasks.map((task) => ({
     ...task,
-    subtasks: tasks.filter(
-      (subtask) => subtask.parent?.id === task.id
-    ),
+    subtasks: tasks.filter((subtask) => parentId(subtask) === task.id),
   }))
-}
-
-// Format duration in milliseconds to hours/minutes string
-function formatDuration(milliseconds) {
-  const totalMinutes = Math.round(milliseconds / 60000)
-
-  const hours = Math.floor(totalMinutes / 60)
-  const minutes = totalMinutes % 60
-
-  if (hours > 0 && minutes > 0) {
-    return `${hours}h ${minutes}m`
-  }
-
-  if (hours > 0) {
-    return `${hours}h`
-  }
-
-  return `${minutes}m`
 }
 
 // Normalize time entry data to a consistent structure
@@ -66,36 +57,6 @@ function normalizeTimeEntries(entries) {
     tags: entry.tags || [],
     description: entry.description || "",
   }))
-}
-
-// Aggregate time entries by project (space)
-function aggregateByProject(entries) {
-  const projects = {}
-
-  entries.forEach((entry) => {
-    const projectId = entry.spaceId || "unknown"
-    const projectName = entry.spaceName || "Unknown Project"
-
-    if (!projects[projectId]) {
-      projects[projectId] = {
-        id: projectId,
-        name: projectName,
-        total: 0,
-        billable: 0,
-        nonBillable: 0,
-      }
-    }
-
-    projects[projectId].total += entry.duration
-
-    if (entry.billable) {
-      projects[projectId].billable += entry.duration
-    } else {
-      projects[projectId].nonBillable += entry.duration
-    }
-  })
-
-  return Object.values(projects)
 }
 
 function App() {
@@ -285,7 +246,9 @@ const entriesWithParents = filteredTimeEntries.map((entry) => {
     ).entries()
   )
 
-  const projects = aggregateByProject(filteredTimeEntries)
+  const projectCount = new Set(
+    filteredTimeEntries.map((entry) => entry.spaceId || "unknown")
+  ).size
 
     useEffect(() => {
       fetch("http://127.0.0.1:8000/spaces")
@@ -671,7 +634,7 @@ const entriesWithParents = filteredTimeEntries.map((entry) => {
           <h2>Projects</h2>
         </div>
         <span className="entry-count">
-          {projects.length} {projects.length === 1 ? "project" : "projects"}
+          {projectCount} {projectCount === 1 ? "project" : "projects"}
         </span>
       </div>
       {timeEntries.length === 0 && (
@@ -680,56 +643,12 @@ const entriesWithParents = filteredTimeEntries.map((entry) => {
           will appear here once time entries are available.
         </p>
       )}
-      <div className="table-container">
-         <table>
-          <thead>
-            <tr>
-              <th>Client / Project</th>
-              <th>Total Time</th>
-              <th>Billable Time</th>
-              <th>Non-Billable Time</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {projects.map((project) => {
-              const projectEntries = entriesWithParents.filter(
-               (entry) => entry.spaceId === project.id
-              )
-
-              return (
-                <Fragment key={project.id}>
-                  <tr key={project.id}>
-                    <td>{project.name}</td>
-
-                    <td>{formatDuration(project.total)}</td>
-
-                    <td>{formatDuration(project.billable)}</td>
-
-                    <td>{formatDuration(project.nonBillable)}</td>
-                  </tr>
-
-                  {projectEntries.map((entry) => (
-                    <tr key={entry.id}>
-                      <td style={{ paddingLeft: "40px" }}>
-                        {entry.taskName}
-                      </td>
-
-                      <td>{formatDuration(entry.duration)}</td>
-
-                      <td>
-                        {entry.billable ? "Billable" : "Non-billable"}
-                      </td>
-
-                      <td></td>
-                    </tr>
-                  ))}
-                </Fragment>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+      <TimeBreakdown
+        entries={entriesWithParents}
+        spaces={spaces}
+        lists={lists}
+        tasks={tasks}
+      />
       {/* Error message */}
       {error && <p className="error-message" role="alert">Error: {error}</p>}
 

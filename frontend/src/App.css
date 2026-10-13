@@ -443,3 +443,46 @@ td:first-child {
     grid-column: 1 / -1;
   }
 }
+
+.sub-tabs {
+  margin-bottom: 14px;
+}
+
+.link-button {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: #3548a8;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
+.breakdown-table .project-row td {
+  background: #f7f8fb;
+  color: #303746;
+  font-weight: 700;
+}
+
+.breakdown-table .task-row td:first-child {
+  color: #4d5869;
+  font-weight: 500;
+}
+
+.breakdown-table .indent-1 {
+  padding-left: 40px;
+}
+
+.breakdown-table .indent-2 {
+  padding-left: 64px;
+}
+
+.breakdown-note {
+  margin: 0 0 12px;
+  color: #6a7484;
+  font-size: 0.84rem;
+}
