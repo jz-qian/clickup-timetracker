@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import AiEstimator from "./AiEstimator.jsx"
 import ArchiveDashboard from "./ArchiveDashboard.jsx"
+import TeamCapacity from "./TeamCapacity.jsx"
 import { loadArchiveDashboard } from "./archiveDashboardData.js"
 
 // Organize flat task data into parent tasks with their subtasks
@@ -387,9 +388,12 @@ const entriesWithParents = filteredTimeEntries.map((entry) => {
         <button onClick={() => setActiveTab("time")}>Time Tracking</button>
         <button onClick={() => setActiveTab("archive")}>Archived Clients</button>
         <button onClick={() => setActiveTab("ai")}>AI Agents</button>
+        <button onClick={() => setActiveTab("capacity")}>Team Capacity</button>
       </nav>
 
       {activeTab === "archive" && <ArchiveDashboard />}
+
+      {activeTab === "capacity" && <TeamCapacity />}
 
       {/* Kept mounted so the key and estimates survive switching tabs */}
       <div hidden={activeTab !== "ai"}>
