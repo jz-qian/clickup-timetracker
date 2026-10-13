@@ -45,14 +45,6 @@ def get_workspace_members():
         members = workspace_data.get("members", [])
 
     return members
-    workspace_data = get_authorized_workspaces()
-
-    members = workspace_data.get("team", {}).get("members", [])
-
-    if not members:
-        members = workspace_data.get("members", [])
-
-    return members
 
 def normalize_workspace_members(members):
     normalized_members = []

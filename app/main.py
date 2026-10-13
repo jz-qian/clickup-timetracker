@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware 
 from app.clickup import (
@@ -15,15 +17,17 @@ from app.clickup import (
 )
 from app.ai_routes import router as ai_router
 from app.team_routes import router as team_router
-app = FastAPI()
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    archive_dashboard_cache.refresh_in_background()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 app.include_router(ai_router)
 app.include_router(team_router)
-
-
-@app.on_event("startup")
-def warm_archive_dashboard():
-    # Build the archive dashboard before anyone opens it.
-    archive_dashboard_cache.refresh_in_background()
 
 
 app.add_middleware(

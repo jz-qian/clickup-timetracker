@@ -12,6 +12,7 @@ environment is used.
 """
 
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -19,7 +20,14 @@ from pydantic import BaseModel
 from app import estimator
 from app import gemini_estimator
 
-router = APIRouter(prefix="/ai")
+
+@asynccontextmanager
+async def lifespan(_: APIRouter):
+    estimator.task_history_cache.refresh_in_background()
+    yield
+
+
+router = APIRouter(prefix="/ai", lifespan=lifespan)
 
 PROVIDERS = {
     "anthropic": {
@@ -50,12 +58,6 @@ AGENTS = {
         "run": gemini_estimator.estimate_task,
     },
 }
-
-
-@router.on_event("startup")
-def warm_task_history():
-    # Build the completed-task history before anyone opens the AI tab.
-    estimator.task_history_cache.refresh_in_background()
 
 
 def _provider_for_key(api_key):
