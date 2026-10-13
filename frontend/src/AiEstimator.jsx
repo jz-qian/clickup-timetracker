@@ -135,7 +135,7 @@ function AiEstimator() {
 
       <h3>1. Connect</h3>
       <p>
-        <label htmlFor="ai-key">API key </label>
+        <label htmlFor="ai-key">Anthropic or Gemini API key </label>
         <input
           id="ai-key"
           type="password"
@@ -145,15 +145,15 @@ function AiEstimator() {
             setApiKey(event.target.value)
             setConnected(false)
           }}
-          placeholder="Your company's AI API key"
+          placeholder="Anthropic sk-ant-... or Gemini AIza..."
         />{" "}
         <button onClick={connect} disabled={connecting}>
           {connecting ? "Connecting..." : "Connect"}
         </button>
       </p>
       <p>
-        Supported: Anthropic (sk-ant-...). Leave blank to use the backend's
-        own key. The key is only kept while this page is open.
+        Supported: Anthropic (sk-ant-...) and Gemini (AIza...). Leave blank
+        to use a backend key. The key is only kept while this page is open.
       </p>
       {connected && (
         <p>

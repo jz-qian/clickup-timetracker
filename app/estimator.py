@@ -377,6 +377,10 @@ def estimate_task(api_key, task_name, task_description=""):
     except anthropic.APIConnectionError:
         raise EstimatorError("Could not reach the Anthropic API.")
 
+    return _format_estimate(history, task_name, answer)
+
+
+def _format_estimate(history, task_name, answer):
     tasks_by_id = {task["id"]: task for task in history["completed_tasks"]}
     # Drop any ID the model invented, and duplicates, keeping its order.
     chosen_ids = list(dict.fromkeys(task_id for task_id in answer["similar_task_ids"] if task_id in tasks_by_id))

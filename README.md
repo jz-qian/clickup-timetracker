@@ -1,13 +1,13 @@
 # clickup-timetracker
 
-This repository provides a small ClickUp time-tracker frontend (Vite + React) and a FastAPI backend that proxies ClickUp API calls.
+This repository provides a ClickUp time-tracker frontend (Vite + React) and a FastAPI backend that proxies ClickUp API calls.
 
 ## Quick setup (development)
 
 Prerequisites
 
 - Python 3.10+ (3.11 recommended)
-- Node.js 20.x (or recent LTS)
+- Node.js 20.19+ or 22.12+ (required by Vite 8)
 - npm (or yarn)
 
 1) Backend (FastAPI)
@@ -43,6 +43,7 @@ CLICKUP_WORKSPACE_ID=90148016204   # keep your current ID formatting
 CLICKUP_SPACE_ID=90148016204       # optional - used by some helper functions
 BACKEND_URL=http://127.0.0.1:8000  # optional override used by the frontend
 ANTHROPIC_API_KEY=your_anthropic_key  # optional - used by the AI Estimator tab when no key is entered there
+GEMINI_API_KEY=your_gemini_key        # optional - used by the AI Estimator tab when no key is entered there
 ```
 
 Notes:
@@ -58,9 +59,11 @@ Notes:
 
 ## Troubleshooting
 
+- If `npm run dev` reports `env: node: No such file or directory`, install a supported Node.js version and restart the terminal so `node` is on your `PATH`. Verify with `node --version` and `npm --version`, then run `npm install` from `frontend`.
 - If the frontend shows stale content, hard-refresh the browser (Cmd/Ctrl+Shift+R) or open an Incognito window and unregister any Service Worker in DevTools.
 - If you see CORS errors, ensure the backend is running and restarted after configuration changes. The backend allows the common Vite dev origins by default.
 - If API responses are empty, confirm your `CLICKUP_API_TOKEN` and `CLICKUP_WORKSPACE_ID` values and that the token has the necessary permissions.
+- The AI Estimator accepts Anthropic (`sk-ant-...`) or Gemini (`AIza...`) API keys. Restart FastAPI after changing server-side keys.
 
 ## Useful commands
 

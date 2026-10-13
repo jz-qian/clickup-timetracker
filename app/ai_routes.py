@@ -17,6 +17,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app import estimator
+from app import gemini_estimator
 
 router = APIRouter(prefix="/ai")
 
@@ -29,9 +30,10 @@ PROVIDERS = {
     },
     "gemini": {
         "name": "Gemini",
-        "key_prefix": "sk-gem-",
-        "server_key_env": "GEMINI_API_KEY",
-        "check_key": estimator.check_api_key,}
+        "key_prefix": "AIza",
+        "server_key_env": ("GEMINI_API_KEY", "GOOGLE_API_KEY"),
+        "check_key": gemini_estimator.check_api_key,
+    },
 }
 
 AGENTS = {
@@ -40,6 +42,12 @@ AGENTS = {
         "description": "Projects a new task's hours from similar completed tasks.",
         "provider": "anthropic",
         "run": estimator.estimate_task,
+    },
+    "task-estimator-gemini": {
+        "name": "Task Time Estimator (Gemini)",
+        "description": "Projects a new task's hours from similar completed tasks.",
+        "provider": "gemini",
+        "run": gemini_estimator.estimate_task,
     },
 }
 
@@ -57,7 +65,10 @@ def _provider_for_key(api_key):
                 return provider_id
     else:
         for provider_id, provider in PROVIDERS.items():
-            if os.getenv(provider["server_key_env"]):
+            env_names = provider["server_key_env"]
+            if isinstance(env_names, str):
+                env_names = (env_names,)
+            if any(os.getenv(env_name) for env_name in env_names):
                 return provider_id
 
     supported = ", ".join(f"{p['name']} ({p['key_prefix']}...)" for p in PROVIDERS.values())
