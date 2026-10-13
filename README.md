@@ -17,8 +17,8 @@ Prerequisites
 python3 -m venv .venv
 source .venv/bin/activate
 
-# install core dependencies (if you have a requirements file, use that)
-pip install fastapi uvicorn python-dotenv requests anthropic
+# install backend dependencies
+python -m pip install -r requirements.txt
 
 # run the backend (from repo root)
 python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000

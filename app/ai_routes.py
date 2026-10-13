@@ -27,6 +27,11 @@ PROVIDERS = {
         "server_key_env": "ANTHROPIC_API_KEY",
         "check_key": estimator.check_api_key,
     },
+    "gemini": {
+        "name": "Gemini",
+        "key_prefix": "sk-gem-",
+        "server_key_env": "GEMINI_API_KEY",
+        "check_key": estimator.check_api_key,}
 }
 
 AGENTS = {
