@@ -111,20 +111,34 @@ def get_tasks(list_id):
     response.raise_for_status()
     return response.json()
 
-def get_time_entries():  
-    response = requests.get(
-        f"{BASE_URL}/team/{workspace_id}/time_entries",
-        headers={"Authorization": token, "Content-Type": "application/json"},
-        params={
-            "include_location_names": "true",
-            "include_task_tags": "true",
-        },
-    )
-    response.raise_for_status()
+def get_time_entries():
+    """
+    Every workspace member's time entries, from the beginning until now.
 
-    data = response.json()
+    Without dates ClickUp only returns the last 30 days, and without
+    `assignee` only the token owner's entries. Seeing other members' entries
+    needs an Owner/Admin token, so fall back to the token owner's own
+    entries if that's refused.
+    """
+    members = normalize_workspace_members(get_workspace_members())
+    params = {
+        "start_date": 0,
+        "end_date": int(datetime.now(tz=timezone.utc).timestamp() * 1000),
+        "include_location_names": "true",
+        "include_task_tags": "true",
+    }
 
-    return data
+    if members:
+        try:
+            return _clickup_get(
+                f"/team/{workspace_id}/time_entries",
+                {**params, "assignee": ",".join(member["clickup_user_id"] for member in members)},
+            )
+        except requests.HTTPError as error:
+            if error.response is None or error.response.status_code not in (400, 401, 403):
+                raise
+
+    return _clickup_get(f"/team/{workspace_id}/time_entries", params)
 
 def get_project_data(): 
     spaces_data = get_spaces()
