@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from "react"
 import AiEstimator from "./AiEstimator.jsx"
 import ArchiveDashboard from "./ArchiveDashboard.jsx"
+import TeamCapacity from "./TeamCapacity.jsx"
 import { loadArchiveDashboard } from "./archiveDashboardData.js"
 
 const WEEKLY_HOURS_PER_PERSON = 40
@@ -463,9 +464,18 @@ const entriesWithParents = filteredTimeEntries.map((entry) => {
         >
           AI Agents
         </button>
+        <button
+          className={activeTab === "capacity" ? "tab-button active" : "tab-button"}
+          aria-current={activeTab === "capacity" ? "page" : undefined}
+          onClick={() => setActiveTab("capacity")}
+        >
+          Team Capacity
+        </button>
       </nav>
 
       {activeTab === "archive" && <ArchiveDashboard />}
+
+      {activeTab === "capacity" && <TeamCapacity />}
 
       {/* Kept mounted so the key and estimates survive switching tabs */}
       <div hidden={activeTab !== "ai"}>

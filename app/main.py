@@ -14,8 +14,10 @@ from app.clickup import (
     record_deadline_changes,
 )
 from app.ai_routes import router as ai_router
+from app.team_routes import router as team_router
 app = FastAPI()
 app.include_router(ai_router)
+app.include_router(team_router)
 
 
 @app.on_event("startup")
