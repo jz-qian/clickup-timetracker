@@ -486,3 +486,255 @@ td:first-child {
   color: #6a7484;
   font-size: 0.84rem;
 }
+
+/* Header actions (badge + sign out) */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sign-out-button,
+.secondary-button,
+.icon-button {
+  border: 1px solid #dfe4ec;
+  border-radius: 8px;
+  background: #fff;
+  color: #3d4656;
+  font-size: 0.84rem;
+  font-weight: 650;
+}
+
+.sign-out-button,
+.secondary-button {
+  min-height: 34px;
+  padding: 0 14px;
+}
+
+.sign-out-button:hover,
+.secondary-button:hover:not(:disabled),
+.icon-button:hover {
+  border-color: #c3ccf3;
+  color: #3548a8;
+}
+
+.secondary-button:disabled {
+  color: #a3abb8;
+  cursor: default;
+}
+
+.primary-button {
+  min-height: 42px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0 16px;
+  background: #5268d8;
+  color: #fff;
+  font-weight: 650;
+}
+
+.primary-button:hover {
+  background: #4357c4;
+}
+
+/* Access gate */
+.access-gate {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px 16px;
+}
+
+.access-card {
+  display: grid;
+  width: min(400px, 100%);
+  padding: 32px 28px;
+}
+
+.access-card h1 {
+  margin: 0;
+  color: #1e2430;
+  font-size: 1.7rem;
+  letter-spacing: -0.045em;
+}
+
+.access-member-button {
+  margin-top: 8px;
+}
+
+.access-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 22px 0;
+  color: #8a93a2;
+  font-size: 0.78rem;
+}
+
+.access-divider::before,
+.access-divider::after {
+  flex: 1;
+  border-top: 1px solid #e7eaf0;
+  content: "";
+}
+
+.access-admin-form {
+  display: grid;
+  gap: 8px;
+}
+
+.access-admin-form label {
+  color: #596476;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.access-admin-form input {
+  min-height: 42px;
+  border: 1px solid #dfe4ec;
+  border-radius: 8px;
+  padding: 0 12px;
+  color: #293140;
+}
+
+.access-admin-form .secondary-button {
+  min-height: 42px;
+  margin-top: 4px;
+}
+
+.access-error {
+  margin: 0;
+  color: #c0392b;
+  font-size: 0.82rem;
+}
+
+/* Day timeline (Google Calendar-style day view) */
+.day-timeline {
+  overflow: hidden;
+}
+
+.day-timeline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid #e7eaf0;
+  padding: 18px 22px;
+}
+
+.day-timeline-header h2 {
+  margin: 0;
+  color: #252b37;
+  font-size: 1.2rem;
+  letter-spacing: -0.025em;
+}
+
+.day-timeline-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.icon-button {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.day-timeline-scroll {
+  height: min(640px, 70vh);
+  overflow-y: auto;
+  padding: 10px 16px 10px 0;
+}
+
+.day-timeline-grid {
+  position: relative;
+}
+
+.day-timeline-hour {
+  position: absolute;
+  right: 0;
+  left: 0;
+}
+
+/* Hour line starts after the label gutter */
+.day-timeline-hour::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 64px;
+  border-top: 1px solid #eef0f4;
+  content: "";
+}
+
+.day-timeline-hour-label {
+  position: absolute;
+  top: -0.5em;
+  width: 56px;
+  color: #8a93a2;
+  font-size: 0.7rem;
+  line-height: 1;
+  text-align: right;
+}
+
+.day-timeline-events {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 64px;
+}
+
+.day-timeline-event {
+  position: absolute;
+  right: 4px;
+  left: 4px;
+  display: flex;
+  overflow: hidden;
+  flex-direction: column;
+  border-left: 3px solid #5268d8;
+  border-radius: 6px;
+  padding: 3px 8px;
+  background: #eef1fd;
+  font-size: 0.75rem;
+}
+
+.day-timeline-event-title {
+  overflow: hidden;
+  color: #2b3570;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.day-timeline-event-time {
+  color: #5a6390;
+}
+
+.day-timeline-now {
+  position: absolute;
+  right: 0;
+  left: -5px;
+  z-index: 1;
+  border-top: 2px solid #ea4335;
+  pointer-events: none;
+}
+
+.day-timeline-now::before {
+  position: absolute;
+  top: -6px;
+  left: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ea4335;
+  content: "";
+}
+
+@media (max-width: 700px) {
+  .day-timeline-header {
+    padding: 15px 17px;
+  }
+}
