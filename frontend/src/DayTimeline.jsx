@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react"
+import { useActivityLog } from "./activityLog.js"
 
 const HOUR_HEIGHT = 48
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour)
@@ -41,6 +42,7 @@ function DayTimeline({ events = [] }) {
   const [day, setDay] = useState(() => startOfDay(new Date()))
   const [now, setNow] = useState(() => Date.now())
   const scrollRef = useRef(null)
+  const activity = useActivityLog()
 
   const dayStart = day.getTime()
   const dayEnd = dayStart + DAY
@@ -73,6 +75,20 @@ function DayTimeline({ events = [] }) {
         ...event,
         top: offsetFor(start, dayStart),
         height: Math.max(offsetFor(end, dayStart) - offsetFor(start, dayStart), 18),
+      }
+    })
+
+  // Computer activity, clipped to the shown day. A span still being
+  // recorded is drawn at least 2px tall so a short burst stays visible.
+  const activeSpans = activity.spans
+    .filter((span) => span.end >= dayStart && span.start < dayEnd)
+    .map((span) => {
+      const start = Math.max(span.start, dayStart)
+      const end = Math.min(span.end, dayEnd)
+      return {
+        ...span,
+        top: offsetFor(start, dayStart),
+        height: Math.max(offsetFor(end, dayStart) - offsetFor(start, dayStart), 2),
       }
     })
 
@@ -116,6 +132,27 @@ function DayTimeline({ events = [] }) {
         </div>
       </div>
 
+      <div className="day-timeline-legend">
+        <span className="day-timeline-legend-item">
+          <span className="day-timeline-legend-swatch" aria-hidden="true" />
+          Computer active
+        </span>
+        <span className="day-timeline-legend-note">
+          {activity.source === "system"
+            ? "Tracking activity anywhere on this computer while this page is open."
+            : "Tracking activity in this tab only."}
+        </span>
+        {activity.source !== "system" &&
+          (activity.permission === "prompt" || activity.permission === "default") && (
+            <button
+              className="link-button day-timeline-legend-action"
+              onClick={activity.enableSystemTracking}
+            >
+              Track the whole computer
+            </button>
+          )}
+      </div>
+
       <div className="day-timeline-scroll" ref={scrollRef}>
         <div
           className="day-timeline-grid"
@@ -132,6 +169,17 @@ function DayTimeline({ events = [] }) {
               </span>
             </div>
           ))}
+
+          <div className="day-timeline-activity" aria-label="Computer activity">
+            {activeSpans.map((span) => (
+              <div
+                key={span.start}
+                className="day-timeline-activity-span"
+                style={{ top: span.top, height: span.height }}
+                title={`Active ${formatTime(span.start)} – ${formatTime(span.end)}`}
+              />
+            ))}
+          </div>
 
           <div className="day-timeline-events">
             {dayEvents.map((event) => (

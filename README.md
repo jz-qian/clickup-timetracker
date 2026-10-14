@@ -54,6 +54,8 @@ Notes:
 - You can create a `.env.example` with the same keys but no secret values for sharing config with teammates.
 - The app opens on a sign-in screen: team members continue straight to their day view, and admins enter the admin password to reach the dashboard. The password is empty by default; set `VITE_ADMIN_PASSWORD` in `frontend/.env` to require one. The check runs in the browser, so it separates the two views but is not real access control.
 
+- The team member day view draws a thin green bar beside the hour labels for each stretch of time the computer was active. By default it counts input on the page itself (mouse, keyboard, touch, scroll). In Chrome or Edge, click **Track the whole computer** to allow the browser's Idle Detection API, which also counts activity in other apps and treats a locked screen as idle. Activity is only recorded while the app is open in a tab, and is stored in that browser's `localStorage` for 30 days.
+
 ## How the app fetches data
 
 - The frontend requests spaces from `GET /spaces` on the backend.

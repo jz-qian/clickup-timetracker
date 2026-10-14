@@ -1,15 +1,19 @@
 #root {
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .dashboard {
   width: min(1180px, 100%);
   margin: 0 auto;
-  padding: 48px 32px 72px;
+  padding: clamp(24px, 5vw, 48px) clamp(16px, 4vw, 32px) clamp(40px, 7vw, 72px);
+  /* Long names, URLs and notes wrap instead of widening the page */
+  overflow-wrap: anywhere;
 }
 
 .dashboard-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
   gap: 24px;
@@ -83,7 +87,7 @@
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
   gap: 14px;
   margin-bottom: 18px;
 }
@@ -146,7 +150,7 @@
 
 .filter-bar {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
   gap: 14px;
 }
 
@@ -287,6 +291,8 @@
 
 .table-container {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
   margin-bottom: 30px;
   border: 1px solid #e5e8ee;
   border-radius: 12px;
@@ -297,6 +303,17 @@ table {
   width: 100%;
   border-collapse: collapse;
   text-align: left;
+}
+
+/* Wide tables scroll sideways in their container on small screens
+   rather than crushing every column */
+.table-container table {
+  min-width: 640px;
+}
+
+.table-container td,
+.table-container th {
+  overflow-wrap: normal;
 }
 
 thead {
@@ -355,7 +372,7 @@ td:first-child {
 
 .time-entry-list li {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(100px, 0.6fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.6fr) auto auto;
   align-items: center;
   gap: 14px;
   border: 1px solid #e7eaf0;
@@ -392,20 +409,17 @@ td:first-child {
   color: #647083;
 }
 
-@media (max-width: 700px) {
-  .dashboard {
-    padding: 30px 18px 48px;
+@media (max-width: 900px) {
+  .capacity-summary {
+    justify-content: flex-start;
   }
+}
 
+@media (max-width: 700px) {
   .dashboard-header {
     align-items: flex-start;
     flex-direction: column;
     gap: 16px;
-  }
-
-  .summary-grid,
-  .filter-bar {
-    grid-template-columns: 1fr;
   }
 
   .summary-card {
@@ -490,6 +504,7 @@ td:first-child {
 /* Header actions (badge + sign out) */
 .header-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
 }
@@ -541,6 +556,7 @@ td:first-child {
 .access-gate {
   display: grid;
   min-height: 100vh;
+  min-height: 100dvh;
   place-items: center;
   padding: 24px 16px;
 }
@@ -548,7 +564,7 @@ td:first-child {
 .access-card {
   display: grid;
   width: min(400px, 100%);
-  padding: 32px 28px;
+  padding: clamp(22px, 6vw, 32px) clamp(18px, 6vw, 28px);
 }
 
 .access-card h1 {
@@ -615,6 +631,7 @@ td:first-child {
 
 .day-timeline-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
@@ -643,8 +660,41 @@ td:first-child {
   line-height: 1;
 }
 
+.day-timeline-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  border-bottom: 1px solid #e7eaf0;
+  padding: 9px 22px;
+  color: #697386;
+  font-size: 0.75rem;
+}
+
+.day-timeline-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #3d4656;
+  font-weight: 650;
+}
+
+.day-timeline-legend-swatch {
+  width: 4px;
+  height: 14px;
+  border-radius: 2px;
+  background: #28a479;
+}
+
+.day-timeline-legend-action {
+  font-size: inherit;
+  font-weight: 650;
+}
+
 .day-timeline-scroll {
   height: min(640px, 70vh);
+  height: min(640px, 70dvh);
+  min-height: 280px;
   overflow-y: auto;
   padding: 10px 16px 10px 0;
 }
@@ -672,11 +722,31 @@ td:first-child {
 .day-timeline-hour-label {
   position: absolute;
   top: -0.5em;
-  width: 56px;
+  width: 52px;
   color: #8a93a2;
   font-size: 0.7rem;
   line-height: 1;
   text-align: right;
+}
+
+/* Thin bar between the hour labels and the hour lines showing when the
+   computer was active */
+.day-timeline-activity {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 57px;
+  width: 4px;
+  border-radius: 2px;
+  background: #f0f2f6;
+}
+
+.day-timeline-activity-span {
+  position: absolute;
+  right: 0;
+  left: 0;
+  border-radius: 2px;
+  background: #28a479;
 }
 
 .day-timeline-events {
@@ -737,4 +807,17 @@ td:first-child {
   .day-timeline-header {
     padding: 15px 17px;
   }
+
+  .day-timeline-legend {
+    padding: 8px 17px;
+  }
+
+  .day-timeline-scroll {
+    padding-right: 10px;
+  }
+}
+
+/* AI Agents description box fills the width it has */
+#ai-task-description {
+  width: 100%;
 }
