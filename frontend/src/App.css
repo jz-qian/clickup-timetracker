@@ -696,7 +696,7 @@ td:first-child {
   height: min(640px, 70dvh);
   min-height: 280px;
   overflow-y: auto;
-  padding: 10px 16px 10px 0;
+  padding: 10px 6px 10px 0;
 }
 
 .day-timeline-grid {
@@ -709,11 +709,11 @@ td:first-child {
   left: 0;
 }
 
-/* Hour line starts after the label gutter */
+/* Hour line runs between the label gutter and the activity gutter */
 .day-timeline-hour::after {
   position: absolute;
   top: 0;
-  right: 0;
+  right: 12px;
   left: 64px;
   border-top: 1px solid #eef0f4;
   content: "";
@@ -722,20 +722,20 @@ td:first-child {
 .day-timeline-hour-label {
   position: absolute;
   top: -0.5em;
-  width: 52px;
+  width: 56px;
   color: #8a93a2;
   font-size: 0.7rem;
   line-height: 1;
   text-align: right;
 }
 
-/* Thin bar between the hour labels and the hour lines showing when the
-   computer was active */
+/* Thin bar on the right, past the end of the hour lines, showing when
+   the computer was active */
 .day-timeline-activity {
   position: absolute;
   top: 0;
+  right: 4px;
   bottom: 0;
-  left: 57px;
   width: 4px;
   border-radius: 2px;
   background: #f0f2f6;
@@ -752,7 +752,7 @@ td:first-child {
 .day-timeline-events {
   position: absolute;
   top: 0;
-  right: 0;
+  right: 12px;
   bottom: 0;
   left: 64px;
 }
@@ -813,7 +813,7 @@ td:first-child {
   }
 
   .day-timeline-scroll {
-    padding-right: 10px;
+    padding-right: 4px;
   }
 }
 
