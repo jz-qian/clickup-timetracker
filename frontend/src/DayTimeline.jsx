@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useActivityLog } from "./activityLog.js"
 
-const HOUR_HEIGHT = 48
+const HOUR_HEIGHT = 55
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour)
 const MINUTE = 60 * 1000
 const DAY = 24 * 60 * MINUTE

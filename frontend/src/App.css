@@ -803,6 +803,12 @@ td:first-child {
   content: "";
 }
 
+.team-timeline-wrapper {
+  width: 900px;
+  height: 600px;
+  margin: 24px auto 0; /* centered horizontally, pushed down 24px */
+}
+
 @media (max-width: 700px) {
   .day-timeline-header {
     padding: 15px 17px;

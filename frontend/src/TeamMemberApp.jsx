@@ -8,7 +8,6 @@ function TeamMemberApp({ onSignOut }) {
         <div className="dashboard-heading">
           <p className="eyebrow">TIME TRACKING</p>
           <h1>My Day</h1>
-          <p className="subtitle">See and plan where your time goes today.</p>
         </div>
         <div className="header-actions">
           <span className="header-badge">Team member</span>
@@ -18,7 +17,9 @@ function TeamMemberApp({ onSignOut }) {
         </div>
       </header>
 
-      <DayTimeline />
+      <div className="team-timeline-wrapper">
+        <DayTimeline />
+      </div>
     </div>
   )
 }
