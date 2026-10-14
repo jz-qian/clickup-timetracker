@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useActivityLog } from "./activityLog.js"
 import { apiFetch } from "./api.js"
-import TimeBlockDialog from "./TimeBlockDialog.jsx"
+import TimeBlockPopover from "./TimeBlockPopover.jsx"
 
 const HOUR_HEIGHT = 55
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour)
@@ -76,15 +76,20 @@ function layOutColumns(events) {
   return laidOut
 }
 
+const DRAFT_ID = "draft"
+// Where the popover opens across a block when there's no click to go by
+const DEFAULT_POINT_X = 160
+
 // Single-day calendar view, like Google Calendar's day view. Click an
 // empty spot (or a green activity stretch) to track time there, or an
-// entry to edit it. Entries are saved to the backend for this member.
+// entry to edit it; a popover opens beside it. Every entry is for one of
+// the member's ClickUp tasks, and is saved to the backend.
 function DayTimeline({ token, tasks = [], onUnauthorized }) {
   const [day, setDay] = useState(() => startOfDay(new Date()))
   const [now, setNow] = useState(() => Date.now())
   const [blocks, setBlocks] = useState([])
   const [loadError, setLoadError] = useState(null)
-  // The entry open in the popup, or null
+  // The entry open in the popover ({ block, pointX }), or null
   const [editing, setEditing] = useState(null)
   const scrollRef = useRef(null)
   const activity = useActivityLog()
@@ -122,11 +127,12 @@ function DayTimeline({ token, tasks = [], onUnauthorized }) {
 
   const saveBlock = async (block) => {
     const body = {
-      title: block.title,
+      task_id: block.task_id,
+      task_name: block.title,
+      space: block.space,
       description: block.description,
       start: block.start,
       end: block.end,
-      task_id: block.task_id,
     }
     const saved = block.id
       ? await apiFetch(`/me/time-blocks/${block.id}`, { token, method: "PUT", body }).catch(handleError)
@@ -143,14 +149,19 @@ function DayTimeline({ token, tasks = [], onUnauthorized }) {
     setBlocks((current) => current.filter((existing) => existing.id !== block.id))
   }
 
-  // Start a new entry at `start`, an hour long unless `end` is given
-  const openNewBlock = (start, end = start + 60 * MINUTE) => {
+  // Start a new entry at `start`, an hour long unless `end` is given.
+  // It shows as a draft block on the calendar for the popover to sit by.
+  const openNewBlock = (start, end = start + 60 * MINUTE, pointX = DEFAULT_POINT_X) => {
     setEditing({
-      title: "",
-      description: "",
-      start,
-      end: Math.min(end, dayEnd),
-      task_id: null,
+      block: {
+        task_id: null,
+        title: "",
+        space: null,
+        description: "",
+        start,
+        end: Math.min(end, dayEnd),
+      },
+      pointX,
     })
   }
 
@@ -161,8 +172,19 @@ function DayTimeline({ token, tasks = [], onUnauthorized }) {
     const rect = event.currentTarget.getBoundingClientRect()
     const minutes = ((event.clientY - rect.top) / HOUR_HEIGHT) * 60
     const quarter = Math.floor(minutes / 15) * 15
-    openNewBlock(dayStart + Math.max(0, Math.min(quarter, 23 * 60 + 45)) * MINUTE)
+    openNewBlock(
+      dayStart + Math.max(0, Math.min(quarter, 23 * 60 + 45)) * MINUTE,
+      undefined,
+      event.clientX - rect.left
+    )
   }
+
+  const editingId = editing ? editing.block.id || DRAFT_ID : null
+  const getAnchor = useCallback(
+    () => scrollRef.current?.querySelector(`[data-block-id="${editingId}"]`),
+    [editingId]
+  )
+  const closeEditor = useCallback(() => setEditing(null), [])
 
   const trackNow = () => {
     const start = isToday ? roundTo(Date.now(), 15) : dayStart + 9 * 60 * MINUTE
@@ -187,8 +209,10 @@ function DayTimeline({ token, tasks = [], onUnauthorized }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dayStart])
 
+  const draft =
+    editing && !editing.block.id ? [{ ...editing.block, id: DRAFT_ID }] : []
   const dayEvents = layOutColumns(
-    blocks.filter((event) => event.end > dayStart && event.start < dayEnd)
+    [...blocks, ...draft].filter((event) => event.end > dayStart && event.start < dayEnd)
   ).map((event) => {
       const start = Math.max(event.start, dayStart)
       const end = Math.min(event.end, dayEnd)
@@ -321,30 +345,68 @@ function DayTimeline({ token, tasks = [], onUnauthorized }) {
 
           {/* Clicking empty space here starts a new entry */}
           <div className="day-timeline-events" onClick={onGridClick}>
-            {dayEvents.map((event) => (
-              <button
-                key={event.id}
-                type="button"
-                className="day-timeline-event"
-                style={{
-                  top: event.top,
-                  height: event.height,
-                  left: `calc(${(event.column / event.columns) * 100}% + 2px)`,
-                  width: `calc(${100 / event.columns}% - 4px)`,
-                }}
-                onClick={() => setEditing(event)}
-              >
-                <span className="day-timeline-event-title">{event.title}</span>
-                <span className="day-timeline-event-time">
-                  {formatTime(event.start)} – {formatTime(event.end)}
-                </span>
-                {event.description && (
-                  <span className="day-timeline-event-description">
-                    {event.description}
+            {dayEvents.map((event) => {
+              const style = {
+                top: event.top,
+                height: event.height,
+                left: `calc(${(event.column / event.columns) * 100}% + 2px)`,
+                width: `calc(${100 / event.columns}% - 4px)`,
+              }
+
+              if (event.id === DRAFT_ID) {
+                return (
+                  <div
+                    key={DRAFT_ID}
+                    data-block-id={DRAFT_ID}
+                    className="day-timeline-event draft"
+                    style={style}
+                    aria-hidden="true"
+                  >
+                    <span className="day-timeline-event-title">New entry</span>
+                    <span className="day-timeline-event-time">
+                      {formatTime(event.start)} – {formatTime(event.end)}
+                    </span>
+                  </div>
+                )
+              }
+
+              return (
+                <button
+                  key={event.id}
+                  type="button"
+                  data-block-id={event.id}
+                  className={
+                    editingId === event.id
+                      ? "day-timeline-event selected"
+                      : "day-timeline-event"
+                  }
+                  style={style}
+                  aria-expanded={editingId === event.id}
+                  onClick={(clickEvent) =>
+                    setEditing({
+                      block: event,
+                      // detail is 0 for a keyboard press, which has no position
+                      pointX:
+                        clickEvent.detail === 0
+                          ? DEFAULT_POINT_X
+                          : clickEvent.clientX -
+                            clickEvent.currentTarget.getBoundingClientRect().left,
+                    })
+                  }
+                >
+                  <span className="day-timeline-event-title">{event.title}</span>
+                  <span className="day-timeline-event-time">
+                    {event.space && `${event.space} · `}
+                    {formatTime(event.start)} – {formatTime(event.end)}
                   </span>
-                )}
-              </button>
-            ))}
+                  {event.description && (
+                    <span className="day-timeline-event-description">
+                      {event.description}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
 
             {isToday && (
               <div
@@ -358,14 +420,16 @@ function DayTimeline({ token, tasks = [], onUnauthorized }) {
       </div>
 
       {editing && (
-        <TimeBlockDialog
-          key={editing.id || "new"}
-          block={editing}
+        <TimeBlockPopover
+          key={`${editingId}-${editing.block.start}`}
+          block={editing.block}
+          getAnchor={getAnchor}
+          pointX={editing.pointX}
           dayStart={dayStart}
           tasks={tasks}
           onSave={saveBlock}
           onDelete={deleteBlock}
-          onClose={() => setEditing(null)}
+          onClose={closeEditor}
         />
       )}
     </section>

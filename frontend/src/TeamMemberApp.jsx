@@ -74,8 +74,28 @@ function AvailabilityCard({ token, onUnauthorized }) {
   )
 }
 
-// The ClickUp tasks assigned to this member, oldest first
-function AssignedTasks({ tasks, error }) {
+// The ClickUp tasks assigned to this member, oldest first. Ticking one
+// marks it complete in ClickUp; it stays here, crossed out, with an undo
+// until the page reloads.
+function AssignedTasks({ tasks, error, completed, onComplete, onUndo }) {
+  // What's in flight per task ("complete" or "undo"), and the last error
+  const [pending, setPending] = useState({})
+  const [taskErrors, setTaskErrors] = useState({})
+
+  const run = async (taskId, kind, action) => {
+    setPending((current) => ({ ...current, [taskId]: kind }))
+    setTaskErrors((current) => ({ ...current, [taskId]: null }))
+    try {
+      await action()
+    } catch (requestError) {
+      setTaskErrors((current) => ({ ...current, [taskId]: requestError.message }))
+    } finally {
+      setPending((current) => ({ ...current, [taskId]: null }))
+    }
+  }
+
+  const openCount = tasks ? tasks.filter((task) => !completed[task.id]).length : 0
+
   return (
     <section className="member-card member-tasks panel" aria-labelledby="tasks-title">
       <div className="member-tasks-header">
@@ -83,7 +103,7 @@ function AssignedTasks({ tasks, error }) {
           <p className="section-kicker">CLICKUP</p>
           <h2 id="tasks-title">Assigned tasks</h2>
         </div>
-        {tasks && <span className="entry-count">{tasks.length}</span>}
+        {tasks && <span className="entry-count">{openCount}</span>}
       </div>
 
       {error && <p className="member-card-note">{error}</p>}
@@ -94,23 +114,60 @@ function AssignedTasks({ tasks, error }) {
 
       {tasks?.length > 0 && (
         <ol className="member-task-list">
-          {tasks.map((task) => (
-            <li key={task.id}>
-              <span className="member-task-name">
-                {task.url ? (
-                  <a href={task.url} target="_blank" rel="noreferrer">
+          {tasks.map((task) => {
+            const isDone = Boolean(completed[task.id])
+            // Tick or untick straight away while ClickUp is updated
+            const showDone = pending[task.id] ? pending[task.id] === "complete" : isDone
+            const checkboxId = `task-done-${task.id}`
+
+            return (
+              <li key={task.id} className={showDone ? "done" : undefined}>
+                <input
+                  id={checkboxId}
+                  type="checkbox"
+                  className="member-task-check"
+                  checked={showDone}
+                  disabled={Boolean(pending[task.id])}
+                  aria-label={`Mark ${task.name} complete`}
+                  onChange={() =>
+                    isDone
+                      ? run(task.id, "undo", () => onUndo(task))
+                      : run(task.id, "complete", () => onComplete(task))
+                  }
+                />
+                <div className="member-task-body">
+                  <label htmlFor={checkboxId} className="member-task-name">
                     {task.name}
-                  </a>
-                ) : (
-                  task.name
-                )}
-              </span>
-              <span className="member-task-meta">
-                <code>{task.custom_id || task.id}</code>
-                {task.status && <span>{task.status}</span>}
-              </span>
-            </li>
-          ))}
+                  </label>
+                  <span className="member-task-meta">
+                    {task.space && <span>{task.space}</span>}
+                    {task.list && <span>{task.list}</span>}
+                    <span>{isDone ? completed[task.id].status : task.status}</span>
+                    {task.url && (
+                      <a href={task.url} target="_blank" rel="noreferrer">
+                        Open in ClickUp
+                      </a>
+                    )}
+                  </span>
+                  {isDone && (
+                    <button
+                      type="button"
+                      className="link-button member-task-undo"
+                      disabled={Boolean(pending[task.id])}
+                      onClick={() => run(task.id, "undo", () => onUndo(task))}
+                    >
+                      Undo
+                    </button>
+                  )}
+                  {taskErrors[task.id] && (
+                    <span className="member-task-error" role="alert">
+                      {taskErrors[task.id]}
+                    </span>
+                  )}
+                </div>
+              </li>
+            )
+          })}
         </ol>
       )}
     </section>
@@ -122,6 +179,35 @@ function TeamMemberApp({ session, onSignOut }) {
   const { token, user } = session
   const [tasks, setTasks] = useState(null)
   const [tasksError, setTasksError] = useState(null)
+  // Tasks completed from this page: id → { status, previous_status }
+  const [completed, setCompleted] = useState({})
+
+  const taskRequest = async (path, body) => {
+    try {
+      return await apiFetch(path, { token, method: "POST", body })
+    } catch (error) {
+      if (error.status === 401) onSignOut()
+      throw error
+    }
+  }
+
+  const completeTask = async (task) => {
+    const result = await taskRequest(`/me/tasks/${task.id}/complete`)
+    setCompleted((current) => ({ ...current, [task.id]: result }))
+  }
+
+  const undoComplete = async (task) => {
+    const previous = completed[task.id]?.previous_status || task.status
+    await taskRequest(`/me/tasks/${task.id}/reopen`, { status: previous })
+    setCompleted((current) => {
+      const next = { ...current }
+      delete next[task.id]
+      return next
+    })
+  }
+
+  // Completed tasks drop out of the time-entry task picker
+  const openTasks = (tasks || []).filter((task) => !completed[task.id])
 
   useEffect(() => {
     apiFetch("/me/tasks", { token })
@@ -148,11 +234,17 @@ function TeamMemberApp({ session, onSignOut }) {
       </header>
 
       <div className="member-layout">
-        <DayTimeline token={token} tasks={tasks || []} onUnauthorized={onSignOut} />
+        <DayTimeline token={token} tasks={openTasks} onUnauthorized={onSignOut} />
 
         <aside className="member-sidebar">
           <AvailabilityCard token={token} onUnauthorized={onSignOut} />
-          <AssignedTasks tasks={tasks} error={tasksError} />
+          <AssignedTasks
+            tasks={tasks}
+            error={tasksError}
+            completed={completed}
+            onComplete={completeTask}
+            onUndo={undoComplete}
+          />
         </aside>
       </div>
     </div>

@@ -270,6 +270,20 @@ def _clickup_get(path, params=None):
     return response.json()
 
 
+def _clickup_put(path, body):
+    response = _session.put(
+        f"{BASE_URL}{path}",
+        headers={
+            "Authorization": token,
+            "Content-Type": "application/json",
+        },
+        json=body,
+        timeout=30,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
 def _to_ms(value):
     """ClickUp sends timestamps as millisecond strings (or null)."""
     if value in (None, ""):
