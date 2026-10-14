@@ -17,6 +17,7 @@ from app.clickup import (
 )
 from app.ai_routes import router as ai_router
 from app.team_routes import router as team_router
+from app.member_routes import router as member_router
 
 
 @asynccontextmanager
@@ -28,6 +29,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(lifespan=lifespan)
 app.include_router(ai_router)
 app.include_router(team_router)
+app.include_router(member_router)
 
 
 app.add_middleware(
