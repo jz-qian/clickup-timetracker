@@ -50,6 +50,7 @@ Notes:
 
 - `.env` is included in `.gitignore` to avoid accidentally committing secrets. If you previously committed a token, rotate it in ClickUp.
 - You can create a `.env.example` with the same keys but no secret values for sharing config with teammates.
+- The app opens on a sign-in screen: team members continue straight to their day view, and admins enter the admin password to reach the dashboard. The password is empty by default; set `VITE_ADMIN_PASSWORD` in `frontend/.env` to require one. The check runs in the browser, so it separates the two views but is not real access control.
 
 ## How the app fetches data
 
