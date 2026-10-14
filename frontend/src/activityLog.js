@@ -3,16 +3,16 @@ import { useCallback, useEffect, useRef, useState } from "react"
 // Records when this computer was in use, as { start, end } spans in
 // milliseconds, so the day timeline can draw them.
 //
-// A span runs from the first activity until 10 minutes pass with none.
-// Those last idle 10 minutes are cut off, so the span ends at the last
-// activity. Activity again after that starts a new span.
+// While this app is open in a tab, focused or not, the computer counts as
+// in use. Where the browser supports the Idle Detection API (Chrome, Edge)
+// and the user allows it, we also learn whether anyone is using the
+// computer and whether the screen is locked: after 10 minutes with no
+// activity anywhere on the computer the span stops, and those idle 10
+// minutes are cut off so it ends at the last activity. A locked screen
+// stops it right away. Use again after that starts a new span.
 //
-// A web page can't watch the whole computer on its own. Where the browser
-// supports the Idle Detection API (Chrome, Edge) and the user allows it,
-// we use it to learn whether the user is active anywhere on the computer
-// and whether the screen is locked. Otherwise we fall back to input on
-// this page (mouse, keyboard, touch, scroll). Either way, activity is only
-// recorded while this app is open in a tab.
+// A sleeping computer or a closed tab records nothing, so the span ends
+// at the last moment the tab was open and awake.
 
 const STORAGE_KEY = "clickup-time-tracker-activity"
 const MINUTE = 60 * 1000
@@ -22,7 +22,9 @@ const IDLE_LIMIT = 10 * MINUTE
 const MERGE_GAP = IDLE_LIMIT
 // How long without input before the Idle Detection API reports "idle"
 const IDLE_THRESHOLD = IDLE_LIMIT
-// While the system reports "active", extend the current span this often
+// While the tab is open (and the system isn't idle), extend the current
+// span this often. Browsers slow timers in background tabs to about once
+// a minute, which is still well inside MERGE_GAP.
 const HEARTBEAT = 30 * 1000
 // Throttle for page input events, which can fire many times a second
 const INPUT_THROTTLE = 5 * 1000
@@ -78,22 +80,22 @@ function supportsIdleDetection() {
 }
 
 // Returns the recorded spans and how activity is being detected:
-// "system" (Idle Detection API) or "page" (input on this page only).
+// "system" (Idle Detection API) or "page" (whenever this tab is open).
 // `enableSystemTracking` asks for Idle Detection permission and must be
 // called from a click; the first click or key press on the page also asks.
 export function useActivityLog() {
-  // Opening the page while it has focus counts as activity
+  // Opening the page counts as activity
   const [spans, setSpans] = useState(() => {
     const now = Date.now()
-    return document.visibilityState === "visible" && document.hasFocus()
-      ? saveSpans([{ start: now, end: now }])
-      : loadSpans()
+    return saveSpans([{ start: now, end: now }])
   })
   const [source, setSource] = useState("page")
   const [permission, setPermission] = useState(
     supportsIdleDetection() ? "prompt" : "unsupported"
   )
   const lastMarkRef = useRef(0)
+  // True while the Idle Detection API says nobody is using the computer
+  const systemIdleRef = useRef(false)
   const enableSystemTrackingRef = useRef(() => {})
   const detectorAbortRef = useRef(null)
 
@@ -124,11 +126,31 @@ export function useActivityLog() {
     })
   }, [])
 
-  // Fallback: input on this page counts as activity
+  // The tab being open counts as activity, unless the system says idle
+  useEffect(() => {
+    const beat = () => {
+      if (!systemIdleRef.current) markActive()
+    }
+    const timer = window.setInterval(beat, HEARTBEAT)
+
+    // A tab coming back into view, or the computer waking up, records
+    // straight away instead of waiting for the next beat
+    document.addEventListener("visibilitychange", beat)
+    window.addEventListener("focus", beat)
+
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener("visibilitychange", beat)
+      window.removeEventListener("focus", beat)
+    }
+  }, [markActive])
+
+  // Input on this page always counts, even between beats
   useEffect(() => {
     const onInput = () => {
       const now = Date.now()
       if (now - lastMarkRef.current >= INPUT_THROTTLE) {
+        systemIdleRef.current = false
         markActive(now)
       }
     }
@@ -157,21 +179,25 @@ export function useActivityLog() {
 
     const controller = new AbortController()
     const detector = new window.IdleDetector()
-    let heartbeat = null
 
     const update = () => {
-      window.clearInterval(heartbeat)
-      heartbeat = null
-
-      if (detector.userState === "active" && detector.screenState === "unlocked") {
-        markActive()
-        heartbeat = window.setInterval(() => markActive(), HEARTBEAT)
-      } else {
+      if (detector.screenState === "locked") {
+        // Locking the screen stops the span now
+        systemIdleRef.current = true
+        trimTo(Date.now())
+      } else if (detector.userState === "idle") {
+        // Reported after IDLE_THRESHOLD with no use; cut those minutes off
+        systemIdleRef.current = true
         trimTo(Date.now() - IDLE_THRESHOLD)
+      } else {
+        systemIdleRef.current = false
+        markActive()
       }
     }
 
-    controller.signal.addEventListener("abort", () => window.clearInterval(heartbeat))
+    controller.signal.addEventListener("abort", () => {
+      systemIdleRef.current = false
+    })
     detector.addEventListener("change", update)
 
     try {

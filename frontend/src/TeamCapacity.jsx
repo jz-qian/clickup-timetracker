@@ -3,6 +3,7 @@ import { useEffect, useState } from "react"
 const PREFERENCE_LABELS = {
   up: "↑ Open to more hours",
   down: "↓ Not open to more hours",
+  same: "– Happy as is",
 }
 
 // Admin view: each team member's logged hours next to their latest
@@ -44,6 +45,7 @@ function TeamCapacity() {
       <p>Team members: {summary.members}</p>
       <p>↑ Open to more hours: {summary.open_to_more}</p>
       <p>↓ Not open to more hours: {summary.not_open_to_more}</p>
+      <p>– Happy as is: {summary.no_change ?? 0}</p>
       <p>No response yet: {summary.no_response}</p>
 
       <h3>Team Members</h3>

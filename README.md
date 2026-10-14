@@ -52,9 +52,13 @@ Notes:
 
 - `.env` is included in `.gitignore` to avoid accidentally committing secrets. If you previously committed a token, rotate it in ClickUp.
 - You can create a `.env.example` with the same keys but no secret values for sharing config with teammates.
-- The app opens on a sign-in screen: team members continue straight to their day view, and admins enter the admin password to reach the dashboard. The password is empty by default; set `VITE_ADMIN_PASSWORD` in `frontend/.env` to require one. The check runs in the browser, so it separates the two views but is not real access control.
-
-- The team member day view draws a thin green bar on the right edge of the calendar for each stretch of time the computer was in use. A stretch ends after 10 minutes with no activity, and those idle 10 minutes are cut off, so it ends at the last activity. In Chrome or Edge, the app asks on the first click to use the browser's Idle Detection API (also available from **Track the whole computer**); once allowed, activity in any app counts and a locked screen counts as idle. Without it, only input on the page itself counts (mouse, keyboard, touch, scroll). Activity is only recorded while the app is open in a tab, and is stored in that browser's `localStorage` for 30 days.
+- The app opens on a sign-in screen. Team members enter their name exactly as it appears in ClickUp (or their ClickUp email). The first time, they create a password (at least 8 characters); after that they sign in with it. Whoever sets a name's password first owns it, so to reset a member's password, delete their entry from `data/accounts.json`. Passwords are stored hashed with scrypt; accounts, sessions and tracked time live in `data/` (gitignored).
+- Admins open **Sign in as admin** and enter the admin password. It is empty by default; set `VITE_ADMIN_PASSWORD` in `frontend/.env` to require one. That check runs in the browser, so it separates the two views but is not real access control.
+- The team member page shows the day calendar with two boxes beside it (below it on narrow screens):
+  - **Want more hours?** with ↑ (open to more hours), – (happy as is) and ↓ (not open to more). The latest answer shows in the admin **Team Capacity** tab.
+  - **Assigned tasks**: the open ClickUp tasks assigned to that member, with their IDs, oldest first.
+- Click an empty spot on the calendar (or **+ Track time**) to log a block of time with a title, details and an optional ClickUp task; click a block to edit or delete it. Clicking a green activity stretch prefills its times. Blocks are saved in `data/time_blocks.json`; they are not sent to ClickUp.
+- The thin green bar on the right edge of the calendar shows when the computer was in use: it stays green the whole time the app is open in a tab, focused or not. In Chrome or Edge, the app asks on the first click to use the browser's Idle Detection API (also available from **Track the whole computer**); once allowed, the bar pauses after 10 minutes with no activity anywhere on the computer, with those idle 10 minutes cut off, and stops right away when the screen locks. A closed tab or sleeping computer records nothing. Activity is stored in that browser's `localStorage` for 30 days.
 
 ## How the app fetches data
 

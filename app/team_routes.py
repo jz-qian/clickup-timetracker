@@ -1,12 +1,15 @@
 """
 Team capacity: whether each team member is open to more hours.
 
-Team members will submit an up arrow (open to more hours) or a down arrow
-(not open to more hours) from their own page. Each submission is appended to
+Team members submit an up arrow (open to more hours), a down arrow
+(not open to more hours), or a dash (happy with their hours as they are)
+from their own page. Each submission is appended to
 a log file, and the admin page shows each member's latest answer next to the
 hours they've logged in ClickUp.
 
-There is no login yet, so the submit endpoint trusts the user id it's sent.
+Signed-in team members submit through POST /me/availability
+(member_routes.py). The older POST /team/availability trusts the user id
+it's sent.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -28,12 +31,12 @@ from app.clickup import (
 router = APIRouter()
 
 AVAILABILITY_LOG_PATH = BASE_DIR / "data" / "availability.jsonl"
-PREFERENCES = {"up", "down"}
+PREFERENCES = {"up", "down", "same"}
 
 _log_lock = threading.Lock()
 
 
-def _load_latest_availability():
+def load_latest_availability():
     """Each member's most recent submission, keyed by ClickUp user id."""
     latest = {}
 
@@ -55,19 +58,15 @@ class AvailabilityRequest(BaseModel):
     note: str = ""
 
 
-@router.post("/team/availability")
-def submit_availability(body: AvailabilityRequest):
-    if body.preference not in PREFERENCES:
-        raise HTTPException(status_code=400, detail='Preference must be "up" or "down".')
-
-    member_ids = {member["clickup_user_id"] for member in normalize_workspace_members(get_workspace_members())}
-    if body.clickup_user_id not in member_ids:
-        raise HTTPException(status_code=404, detail="Unknown team member.")
+def record_availability(clickup_user_id, preference, note=""):
+    """Append one member's answer to the log and return the saved entry."""
+    if preference not in PREFERENCES:
+        raise HTTPException(status_code=400, detail='Preference must be "up", "down" or "same".')
 
     entry = {
-        "clickup_user_id": body.clickup_user_id,
-        "preference": body.preference,
-        "note": body.note.strip(),
+        "clickup_user_id": clickup_user_id,
+        "preference": preference,
+        "note": note.strip(),
         "submitted_at": datetime.now(tz=timezone.utc).isoformat(),
     }
 
@@ -79,10 +78,19 @@ def submit_availability(body: AvailabilityRequest):
     return entry
 
 
+@router.post("/team/availability")
+def submit_availability(body: AvailabilityRequest):
+    member_ids = {member["clickup_user_id"] for member in normalize_workspace_members(get_workspace_members())}
+    if body.clickup_user_id not in member_ids:
+        raise HTTPException(status_code=404, detail="Unknown team member.")
+
+    return record_availability(body.clickup_user_id, body.preference, body.note)
+
+
 @router.get("/admin/team-capacity")
 def team_capacity():
     members = normalize_workspace_members(get_workspace_members())
-    availability = _load_latest_availability()
+    availability = load_latest_availability()
     entries = get_time_entries().get("data", [])
 
     now = datetime.now(tz=timezone.utc)
@@ -134,6 +142,7 @@ def team_capacity():
             "members": len(people),
             "open_to_more": sum(1 for person in people if person["preference"] == "up"),
             "not_open_to_more": sum(1 for person in people if person["preference"] == "down"),
+            "no_change": sum(1 for person in people if person["preference"] == "same"),
             "no_response": sum(1 for person in people if person["preference"] is None),
         },
         "people": people,

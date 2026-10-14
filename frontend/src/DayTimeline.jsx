@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useActivityLog } from "./activityLog.js"
+import { apiFetch } from "./api.js"
+import TimeBlockDialog from "./TimeBlockDialog.jsx"
 
 const HOUR_HEIGHT = 55
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour)
@@ -36,17 +38,136 @@ function offsetFor(milliseconds, dayStart) {
   return ((milliseconds - dayStart) / (60 * MINUTE)) * HOUR_HEIGHT
 }
 
-// Single-day calendar view, like Google Calendar's day view.
-// `events` are { id, title, start, end } with start/end in milliseconds.
-function DayTimeline({ events = [] }) {
+// Round a time to the nearest `step` minutes
+function roundTo(milliseconds, step) {
+  const size = step * MINUTE
+  return Math.round(milliseconds / size) * size
+}
+
+// Side-by-side columns for entries that overlap, like a calendar app.
+// Adds `column` and `columns` to each event.
+function layOutColumns(events) {
+  const sorted = [...events].sort((a, b) => a.start - b.start || b.end - a.end)
+  const laidOut = []
+  let group = []
+  let groupEnd = -Infinity
+  let columnEnds = []
+
+  const finishGroup = () => {
+    group.forEach((event) => laidOut.push({ ...event, columns: columnEnds.length }))
+    group = []
+    columnEnds = []
+  }
+
+  sorted.forEach((event) => {
+    if (event.start >= groupEnd) {
+      finishGroup()
+      groupEnd = -Infinity
+    }
+
+    let column = columnEnds.findIndex((end) => end <= event.start)
+    if (column === -1) column = columnEnds.length
+    columnEnds[column] = event.end
+    groupEnd = Math.max(groupEnd, event.end)
+    group.push({ ...event, column })
+  })
+  finishGroup()
+
+  return laidOut
+}
+
+// Single-day calendar view, like Google Calendar's day view. Click an
+// empty spot (or a green activity stretch) to track time there, or an
+// entry to edit it. Entries are saved to the backend for this member.
+function DayTimeline({ token, tasks = [], onUnauthorized }) {
   const [day, setDay] = useState(() => startOfDay(new Date()))
   const [now, setNow] = useState(() => Date.now())
+  const [blocks, setBlocks] = useState([])
+  const [loadError, setLoadError] = useState(null)
+  // The entry open in the popup, or null
+  const [editing, setEditing] = useState(null)
   const scrollRef = useRef(null)
   const activity = useActivityLog()
 
   const dayStart = day.getTime()
   const dayEnd = dayStart + DAY
   const isToday = now >= dayStart && now < dayEnd
+
+  const handleError = (error) => {
+    if (error.status === 401) onUnauthorized?.()
+    throw error
+  }
+
+  // Load this day's entries
+  useEffect(() => {
+    let cancelled = false
+
+    apiFetch(`/me/time-blocks?start=${dayStart}&end=${dayStart + DAY}`, { token })
+      .then((data) => {
+        if (cancelled) return
+        setBlocks(data.time_blocks)
+        setLoadError(null)
+      })
+      .catch((error) => {
+        if (cancelled) return
+        if (error.status === 401) onUnauthorized?.()
+        setLoadError(error.message)
+      })
+
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dayStart, token])
+
+  const saveBlock = async (block) => {
+    const body = {
+      title: block.title,
+      description: block.description,
+      start: block.start,
+      end: block.end,
+      task_id: block.task_id,
+    }
+    const saved = block.id
+      ? await apiFetch(`/me/time-blocks/${block.id}`, { token, method: "PUT", body }).catch(handleError)
+      : await apiFetch("/me/time-blocks", { token, method: "POST", body }).catch(handleError)
+
+    setBlocks((current) => [
+      ...current.filter((existing) => existing.id !== saved.id),
+      saved,
+    ])
+  }
+
+  const deleteBlock = async (block) => {
+    await apiFetch(`/me/time-blocks/${block.id}`, { token, method: "DELETE" }).catch(handleError)
+    setBlocks((current) => current.filter((existing) => existing.id !== block.id))
+  }
+
+  // Start a new entry at `start`, an hour long unless `end` is given
+  const openNewBlock = (start, end = start + 60 * MINUTE) => {
+    setEditing({
+      title: "",
+      description: "",
+      start,
+      end: Math.min(end, dayEnd),
+      task_id: null,
+    })
+  }
+
+  // Clicking an empty spot starts an entry at that time, to the quarter hour
+  const onGridClick = (event) => {
+    if (event.target !== event.currentTarget) return
+
+    const rect = event.currentTarget.getBoundingClientRect()
+    const minutes = ((event.clientY - rect.top) / HOUR_HEIGHT) * 60
+    const quarter = Math.floor(minutes / 15) * 15
+    openNewBlock(dayStart + Math.max(0, Math.min(quarter, 23 * 60 + 45)) * MINUTE)
+  }
+
+  const trackNow = () => {
+    const start = isToday ? roundTo(Date.now(), 15) : dayStart + 9 * 60 * MINUTE
+    openNewBlock(Math.min(start, dayEnd - 15 * MINUTE))
+  }
 
   // Keep the current-time line moving
   useEffect(() => {
@@ -66,9 +187,9 @@ function DayTimeline({ events = [] }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dayStart])
 
-  const dayEvents = events
-    .filter((event) => event.end > dayStart && event.start < dayEnd)
-    .map((event) => {
+  const dayEvents = layOutColumns(
+    blocks.filter((event) => event.end > dayStart && event.start < dayEnd)
+  ).map((event) => {
       const start = Math.max(event.start, dayStart)
       const end = Math.min(event.end, dayEnd)
       return {
@@ -76,7 +197,7 @@ function DayTimeline({ events = [] }) {
         top: offsetFor(start, dayStart),
         height: Math.max(offsetFor(end, dayStart) - offsetFor(start, dayStart), 18),
       }
-    })
+  })
 
   // Computer activity, clipped to the shown day. A span still being
   // recorded is drawn at least 2px tall so a short burst stays visible.
@@ -108,6 +229,9 @@ function DayTimeline({ events = [] }) {
           </h2>
         </div>
         <div className="day-timeline-controls">
+          <button className="primary-button day-timeline-add" onClick={trackNow}>
+            + Track time
+          </button>
           <button
             className="secondary-button"
             onClick={() => setDay(startOfDay(new Date()))}
@@ -139,8 +263,8 @@ function DayTimeline({ events = [] }) {
         </span>
         <span className="day-timeline-legend-note">
           {activity.source === "system"
-            ? "Tracking activity anywhere on this computer while this page is open."
-            : "Tracking activity in this tab only."}
+            ? "Green while this page is open, pausing after 10 idle minutes or when the screen locks."
+            : "Green while this page is open."}
         </span>
         {activity.source !== "system" &&
           (activity.permission === "prompt" || activity.permission === "default") && (
@@ -152,6 +276,12 @@ function DayTimeline({ events = [] }) {
             </button>
           )}
       </div>
+
+      {loadError && (
+        <p className="day-timeline-error" role="alert">
+          Couldn't load your tracked time: {loadError}
+        </p>
+      )}
 
       <div className="day-timeline-scroll" ref={scrollRef}>
         <div
@@ -172,27 +302,48 @@ function DayTimeline({ events = [] }) {
 
           <div className="day-timeline-activity" aria-label="Computer activity">
             {activeSpans.map((span) => (
-              <div
+              <button
                 key={span.start}
+                type="button"
                 className="day-timeline-activity-span"
                 style={{ top: span.top, height: span.height }}
-                title={`Active ${formatTime(span.start)} – ${formatTime(span.end)}`}
+                title={`Active ${formatTime(span.start)} – ${formatTime(span.end)}. Click to track this time.`}
+                aria-label={`Active ${formatTime(span.start)} to ${formatTime(span.end)}. Track this time.`}
+                onClick={() =>
+                  openNewBlock(
+                    Math.max(roundTo(span.start, 5), dayStart),
+                    Math.max(roundTo(span.end, 5), roundTo(span.start, 5) + 5 * MINUTE)
+                  )
+                }
               />
             ))}
           </div>
 
-          <div className="day-timeline-events">
+          {/* Clicking empty space here starts a new entry */}
+          <div className="day-timeline-events" onClick={onGridClick}>
             {dayEvents.map((event) => (
-              <div
+              <button
                 key={event.id}
+                type="button"
                 className="day-timeline-event"
-                style={{ top: event.top, height: event.height }}
+                style={{
+                  top: event.top,
+                  height: event.height,
+                  left: `calc(${(event.column / event.columns) * 100}% + 2px)`,
+                  width: `calc(${100 / event.columns}% - 4px)`,
+                }}
+                onClick={() => setEditing(event)}
               >
                 <span className="day-timeline-event-title">{event.title}</span>
                 <span className="day-timeline-event-time">
                   {formatTime(event.start)} – {formatTime(event.end)}
                 </span>
-              </div>
+                {event.description && (
+                  <span className="day-timeline-event-description">
+                    {event.description}
+                  </span>
+                )}
+              </button>
             ))}
 
             {isToday && (
@@ -205,6 +356,18 @@ function DayTimeline({ events = [] }) {
           </div>
         </div>
       </div>
+
+      {editing && (
+        <TimeBlockDialog
+          key={editing.id || "new"}
+          block={editing}
+          dayStart={dayStart}
+          tasks={tasks}
+          onSave={saveBlock}
+          onDelete={deleteBlock}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </section>
   )
 }
