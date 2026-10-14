@@ -19,6 +19,25 @@ body {
   min-width: 320px;
   min-height: 100vh;
   margin: 0;
+  background: #f5f6f8;
+}
+
+/* Keep media and form controls inside narrow containers */
+img,
+svg,
+video {
+  max-width: 100%;
+  height: auto;
+}
+
+input,
+select,
+textarea {
+  max-width: 100%;
+}
+
+textarea {
+  font: inherit;
 }
 
 button,

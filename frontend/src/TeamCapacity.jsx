@@ -47,39 +47,41 @@ function TeamCapacity() {
       <p>No response yet: {summary.no_response}</p>
 
       <h3>Team Members</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Role</th>
-            <th>This Week (since {data.week_start})</th>
-            <th>Last 30 Days</th>
-            <th>All Time</th>
-            <th>More Hours?</th>
-            <th>Note</th>
-            <th>Answered</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {people.map((person) => (
-            <tr key={person.clickup_user_id}>
-              <td>{person.name}</td>
-              <td>{person.role || "—"}</td>
-              <td>{person.hours_this_week}h</td>
-              <td>{person.hours_last_30_days}h</td>
-              <td>{person.hours_all_time}h</td>
-              <td>{PREFERENCE_LABELS[person.preference] || "No response"}</td>
-              <td>{person.note || "—"}</td>
-              <td>
-                {person.submitted_at
-                  ? new Date(person.submitted_at).toLocaleString()
-                  : "—"}
-              </td>
+      <div className="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Role</th>
+              <th>This Week (since {data.week_start})</th>
+              <th>Last 30 Days</th>
+              <th>All Time</th>
+              <th>More Hours?</th>
+              <th>Note</th>
+              <th>Answered</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+
+          <tbody>
+            {people.map((person) => (
+              <tr key={person.clickup_user_id}>
+                <td>{person.name}</td>
+                <td>{person.role || "—"}</td>
+                <td>{person.hours_this_week}h</td>
+                <td>{person.hours_last_30_days}h</td>
+                <td>{person.hours_all_time}h</td>
+                <td>{PREFERENCE_LABELS[person.preference] || "No response"}</td>
+                <td>{person.note || "—"}</td>
+                <td>
+                  {person.submitted_at
+                    ? new Date(person.submitted_at).toLocaleString()
+                    : "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
