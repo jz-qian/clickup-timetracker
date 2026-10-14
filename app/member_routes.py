@@ -5,7 +5,8 @@ A member signs in with their ClickUp name. The first time, they choose a
 password; after that they sign in with it. Each name maps to one ClickUp
 workspace member, so the rest of the app can pull that person's ClickUp
 data: the tasks assigned to them, their up/down/dash answer for the admin
-capacity view, and the time blocks they add to their day calendar.
+capacity view, and the time blocks they add to their day calendar. Members
+can also mark their assigned tasks complete in ClickUp from here.
 
 Accounts, sessions and time blocks are stored as JSON files in data/.
 Whoever sets a name's password first owns it, so delete that member's
@@ -26,6 +27,7 @@ from pydantic import BaseModel
 from app.clickup import (
     BASE_DIR,
     _clickup_get,
+    _clickup_put,
     get_workspace_members,
     normalize_workspace_members,
     workspace_id,
@@ -242,6 +244,12 @@ def me(member=Depends(current_member)):
 # Assigned ClickUp tasks
 # --------------------------------------------------
 
+def _space_names():
+    """ClickUp space names by id. Tasks only carry their space's id."""
+    data = _clickup_get(f"/team/{workspace_id}/space", {"archived": "false"})
+    return {space["id"]: space.get("name") for space in data.get("spaces", [])}
+
+
 def get_assigned_tasks(clickup_user_id):
     """Open tasks (and subtasks) assigned to a member, oldest first."""
     tasks = []
@@ -263,24 +271,70 @@ def get_assigned_tasks(clickup_user_id):
         page += 1
 
     tasks.sort(key=lambda task: int(task.get("date_created") or 0))
+    space_names = _space_names() if tasks else {}
 
     return [
         {
             "id": task["id"],
-            "custom_id": task.get("custom_id"),
             "name": task.get("name"),
             "status": (task.get("status") or {}).get("status"),
             "url": task.get("url"),
             "list": (task.get("list") or {}).get("name"),
+            "space_id": (task.get("space") or {}).get("id"),
+            "space": space_names.get((task.get("space") or {}).get("id")),
             "date_created": task.get("date_created"),
         }
         for task in tasks
     ]
 
 
+def _assigned_task(task_id, clickup_user_id):
+    """A task, but only if it's assigned to this member."""
+    task = _clickup_get(f"/task/{task_id}")
+    assignee_ids = {str(person.get("id")) for person in task.get("assignees", [])}
+    if clickup_user_id not in assignee_ids:
+        raise HTTPException(status_code=403, detail="That task isn't assigned to you.")
+    return task
+
+
+def _closed_status(list_id):
+    """The status a list uses for complete tasks ("closed", else "done")."""
+    statuses = _clickup_get(f"/list/{list_id}").get("statuses", [])
+    for status_type in ("closed", "done"):
+        for status in statuses:
+            if status.get("type") == status_type:
+                return status["status"]
+
+    raise HTTPException(status_code=409, detail="This task's list has no complete status.")
+
+
 @router.get("/me/tasks")
 def my_tasks(member=Depends(current_member)):
     return {"tasks": get_assigned_tasks(member["clickup_user_id"])}
+
+
+@router.post("/me/tasks/{task_id}/complete")
+def complete_task(task_id: str, member=Depends(current_member)):
+    """Move a task to its list's complete status in ClickUp."""
+    task = _assigned_task(task_id, member["clickup_user_id"])
+    previous_status = (task.get("status") or {}).get("status")
+    status = _closed_status((task.get("list") or {}).get("id"))
+
+    _clickup_put(f"/task/{task_id}", {"status": status})
+    return {"id": task_id, "status": status, "previous_status": previous_status}
+
+
+class ReopenRequest(BaseModel):
+    status: str
+
+
+@router.post("/me/tasks/{task_id}/reopen")
+def reopen_task(task_id: str, body: ReopenRequest, member=Depends(current_member)):
+    """Undo a completion by putting the task back in the status it had."""
+    _assigned_task(task_id, member["clickup_user_id"])
+
+    _clickup_put(f"/task/{task_id}", {"status": body.status})
+    return {"id": task_id, "status": body.status}
 
 
 # --------------------------------------------------
@@ -307,26 +361,28 @@ def submit_my_availability(body: PreferenceRequest, member=Depends(current_membe
 # --------------------------------------------------
 
 class TimeBlockRequest(BaseModel):
-    title: str
+    # Every block is for one ClickUp task; its name is the block's title
+    task_id: str
+    task_name: str
+    space: str | None = None
     description: str = ""
     start: int  # milliseconds since the epoch
     end: int
-    task_id: str | None = None
 
 
 def _validate_block(body):
-    title = body.title.strip()
-    if not title:
-        raise HTTPException(status_code=400, detail="Give the entry a title.")
+    if not body.task_id.strip() or not body.task_name.strip():
+        raise HTTPException(status_code=400, detail="Choose a ClickUp task.")
     if body.end <= body.start:
         raise HTTPException(status_code=400, detail="The end time must be after the start time.")
 
     return {
-        "title": title,
+        "task_id": body.task_id.strip(),
+        "title": body.task_name.strip(),
+        "space": (body.space or "").strip() or None,
         "description": body.description.strip(),
         "start": body.start,
         "end": body.end,
-        "task_id": body.task_id or None,
     }
 
 
