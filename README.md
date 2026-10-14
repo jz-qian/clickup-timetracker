@@ -27,8 +27,10 @@ python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 2) Frontend (Vite + React)
 
 ```bash
-cd frontend
-npm install
+# install frontend dependencies (from the repository root)
+npm install --prefix frontend
+
+# start the frontend (from the repository root)
 npm run dev
 # open the Vite URL shown in the terminal (e.g. http://localhost:5173 or 5175)
 ```
@@ -60,7 +62,9 @@ Notes:
 
 ## Troubleshooting
 
-- If `npm run dev` reports `env: node: No such file or directory`, install a supported Node.js version and restart the terminal so `node` is on your `PATH`. Verify with `node --version` and `npm --version`, then run `npm install` from `frontend`.
+- If npm reports `ENOENT` while opening `/.../clickup-timetracker/package.json`, make sure you are in the repository root and that the root `package.json` exists. The root `npm run dev` script forwards to the frontend. If you are on an older checkout without that file, update the checkout; alternatively run `cd frontend && npm run dev`.
+- If the root `npm run dev` reports `vite: not found`, install the frontend dependencies from the repository root with `npm install --prefix frontend`, then retry `npm run dev`.
+- If `npm run dev` reports `env: node: No such file or directory`, install a supported Node.js version and restart the terminal so `node` is on your `PATH`. Verify with `node --version` and `npm --version`, then run `npm install --prefix frontend` from the repository root.
 - If the frontend shows stale content, hard-refresh the browser (Cmd/Ctrl+Shift+R) or open an Incognito window and unregister any Service Worker in DevTools.
 - If you see CORS errors, ensure the backend is running and restarted after configuration changes. The backend allows the common Vite dev origins by default.
 - If API responses are empty, confirm your `CLICKUP_API_TOKEN` and `CLICKUP_WORKSPACE_ID` values and that the token has the necessary permissions.
@@ -72,7 +76,7 @@ Notes:
 # backend
 uvicorn app.main:app --reload
 
-# frontend (from /frontend)
+# frontend (from the repository root)
 npm run dev
 
 # quickly check API from the repo root
