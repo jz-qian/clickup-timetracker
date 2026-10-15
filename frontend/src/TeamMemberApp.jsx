@@ -5,7 +5,7 @@ import DayTimeline from "./DayTimeline.jsx"
 const PREFERENCE_OPTIONS = [
   { value: "up", symbol: "↑", label: "Open to more hours" },
   { value: "same", symbol: "–", label: "Happy as is" },
-  { value: "down", symbol: "↓", label: "Not open to more hours" },
+  { value: "down", symbol: "↓", label: "Less hours" },
 ]
 
 // Up / dash / down buttons. The latest answer feeds the admin page's
@@ -45,9 +45,9 @@ function AvailabilityCard({ token, onUnauthorized }) {
   return (
     <section className="member-card panel" aria-labelledby="availability-title">
       <p className="section-kicker">YOUR HOURS</p>
-      <h2 id="availability-title">Want more hours?</h2>
+      <h2 id="availability-title">Want more tasks?</h2>
 
-      <div className="availability-buttons" role="group" aria-label="Want more hours?">
+      <div className="availability-buttons" role="group" aria-label="Want more tasks?">
         {PREFERENCE_OPTIONS.map((option) => (
           <button
             key={option.value}

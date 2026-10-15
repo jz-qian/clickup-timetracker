@@ -95,9 +95,8 @@
 .summary-card,
 .panel {
   border: 1px solid #e7eaf0;
-  border-radius: 14px;
+  border-radius: 0;
   background: #fff;
-  box-shadow: 0 3px 12px rgb(29 42 68 / 3%);
 }
 
 .summary-card {
@@ -924,7 +923,7 @@ td:first-child {
   max-height: calc(100dvh - 16px);
   overflow-y: auto;
   border: 1px solid #e3e7ee;
-  border-radius: 12px;
+  border-radius: 0;
   background: #fff;
   box-shadow: 0 12px 32px rgb(29 42 68 / 16%), 0 2px 6px rgb(29 42 68 / 8%);
 }
@@ -1071,7 +1070,7 @@ td:first-child {
 .availability-button {
   min-height: 46px;
   border: 1px solid #dfe4ec;
-  border-radius: 10px;
+  border-radius: 0;
   background: #fff;
   color: #3d4656;
   font-size: 1.35rem;
