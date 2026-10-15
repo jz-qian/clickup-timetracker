@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { apiFetch } from "./api.js"
-import DayTimeline from "./DayTimeline.jsx"
+import Calendar from "./Calendar.jsx"
 
 const PREFERENCE_OPTIONS = [
   { value: "up", symbol: "↑", label: "Open to more hours" },
@@ -234,7 +234,7 @@ function TeamMemberApp({ session, onSignOut }) {
       </header>
 
       <div className="member-layout">
-        <DayTimeline token={token} tasks={openTasks} onUnauthorized={onSignOut} />
+        <Calendar token={token} tasks={openTasks} onUnauthorized={onSignOut} />
 
         <aside className="member-sidebar">
           <AvailabilityCard token={token} onUnauthorized={onSignOut} />
