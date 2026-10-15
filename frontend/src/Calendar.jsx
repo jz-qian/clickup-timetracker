@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useActivityLog } from "./activityLog.js"
 import { apiFetch } from "./api.js"
+import { useLiveRefresh } from "./liveRefresh.js"
 import {
   MINUTE,
   addDays,
@@ -101,27 +102,29 @@ function Calendar({ token, tasks = [], onUnauthorized }) {
     throw error
   }
 
-  // Load the entries for the shown range
-  useEffect(() => {
-    let cancelled = false
+  // Load the entries for the shown range. The ref guards against a slow
+  // reply for a range we've since moved away from.
+  const shownRangeRef = useRef(null)
+  const loadBlocks = useCallback(() => {
+    const range = `${rangeStart}-${rangeEnd}`
+    shownRangeRef.current = range
 
     apiFetch(`/me/time-blocks?start=${rangeStart}&end=${rangeEnd}`, { token })
       .then((data) => {
-        if (cancelled) return
+        if (shownRangeRef.current !== range) return
         setBlocks(data.time_blocks)
         setLoadError(null)
       })
       .catch((error) => {
-        if (cancelled) return
+        if (shownRangeRef.current !== range) return
         if (error.status === 401) onUnauthorized?.()
         setLoadError(`Couldn't load your tracked time: ${error.message}`)
       })
+  }, [rangeStart, rangeEnd, token, onUnauthorized])
 
-    return () => {
-      cancelled = true
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rangeStart, rangeEnd, token])
+  useEffect(loadBlocks, [loadBlocks])
+  // Time logged or changed in ClickUp shows up without reloading
+  useLiveRefresh(loadBlocks)
 
   // Keep the current-time line and running timers moving
   useEffect(() => {
@@ -232,7 +235,8 @@ function Calendar({ token, tasks = [], onUnauthorized }) {
   )
   const closeEditor = useCallback(() => setEditing(null), [])
 
-  // Running timers stretch to now; a new entry shows as a draft
+  // Running timers stretch to now. A new entry rides along as an
+  // invisible draft, only so the popover has something to point at.
   const shownBlocks = [
     ...blocks.map((block) =>
       block.running ? { ...block, end: Math.max(now, block.start + MINUTE) } : block

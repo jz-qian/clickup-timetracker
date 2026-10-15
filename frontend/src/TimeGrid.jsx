@@ -28,22 +28,6 @@ function GridEvent({ event, selected, onOpen }) {
     width: `calc(${100 / event.columns}% - 4px)`,
   }
 
-  if (event.id === DRAFT_ID) {
-    return (
-      <div
-        data-block-id={DRAFT_ID}
-        className="day-timeline-event draft"
-        style={style}
-        aria-hidden="true"
-      >
-        <span className="day-timeline-event-title">New entry</span>
-        <span className="day-timeline-event-time">
-          {formatTime(event.start)} – {formatTime(event.end)}
-        </span>
-      </div>
-    )
-  }
-
   const classNames = ["day-timeline-event"]
   if (event.running) classNames.push("running")
   if (selected) classNames.push("selected")
@@ -207,8 +191,17 @@ function TimeGrid({
         <div className="day-timeline-columns">
           {days.map((day) => {
             const dayStart = day.getTime()
+            // A new entry isn't drawn until it's saved; an invisible
+            // anchor marks its slot for the popover to point at
+            const draft = clipToDay(
+              blocks.filter((event) => event.id === DRAFT_ID),
+              dayStart
+            )[0]
             const events = layOutColumns(
-              clipToDay(blocks, dayStart).map((event) => ({
+              clipToDay(
+                blocks.filter((event) => event.id !== DRAFT_ID),
+                dayStart
+              ).map((event) => ({
                 ...event,
                 // Lay out by the part on this day
                 start: event.clippedStart,
@@ -235,6 +228,18 @@ function TimeGrid({
                 className="day-timeline-events"
                 onClick={(event) => onColumnClick(event, dayStart)}
               >
+                {draft && (
+                  <span
+                    data-block-id={DRAFT_ID}
+                    className="draft-anchor"
+                    style={{
+                      top: offsetFor(draft.clippedStart, dayStart),
+                      height: offsetFor(draft.clippedEnd, dayStart) - offsetFor(draft.clippedStart, dayStart),
+                    }}
+                    aria-hidden="true"
+                  />
+                )}
+
                 {events.map((event) => (
                   <GridEvent
                     key={event.id}
