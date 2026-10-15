@@ -5,28 +5,33 @@ A member signs in with their ClickUp name. The first time, they choose a
 password; after that they sign in with it. Each name maps to one ClickUp
 workspace member, so the rest of the app can pull that person's ClickUp
 data: the tasks assigned to them, their up/down/dash answer for the admin
-capacity view, and the time blocks they add to their day calendar. Members
-can also mark their assigned tasks complete in ClickUp from here.
+capacity view, and the time they track on their day calendar. Members can
+also mark their assigned tasks complete in ClickUp from here.
 
-Accounts, sessions and time blocks are stored as JSON files in data/.
+Tracked time is stored in ClickUp as time entries on the chosen task, so it
+shows up everywhere ClickUp time does, including the admin dashboard.
+Accounts and sessions are stored as JSON files in data/.
 Whoever sets a name's password first owns it, so delete that member's
 entry in data/accounts.json to let them set it again.
 """
 
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
 import json
 import secrets
 import threading
-import uuid
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
+import requests
 
 from app.clickup import (
     BASE_DIR,
+    _clickup_delete,
     _clickup_get,
+    _clickup_post,
     _clickup_put,
     get_workspace_members,
     normalize_workspace_members,
@@ -38,12 +43,42 @@ router = APIRouter()
 
 ACCOUNTS_PATH = BASE_DIR / "data" / "accounts.json"
 SESSIONS_PATH = BASE_DIR / "data" / "sessions.json"
-TIME_BLOCKS_PATH = BASE_DIR / "data" / "time_blocks.json"
 
 MIN_PASSWORD_LENGTH = 8
 SESSION_LIFETIME = timedelta(days=30)
 
 _store_lock = threading.Lock()
+
+
+@contextmanager
+def clickup_errors(action):
+    """
+    Turn a failed ClickUp call into a clear error for the page. ClickUp's
+    own 401/403 become 502, so the page doesn't mistake them for the
+    member's session expiring.
+    """
+    try:
+        yield
+    except requests.HTTPError as error:
+        response = error.response
+        try:
+            message = response.json().get("err") if response is not None else None
+        except ValueError:
+            message = None
+
+        status = response.status_code if response is not None else None
+        if status in (401, 403):
+            message = (
+                "ClickUp refused this. The backend's CLICKUP_API_TOKEN must belong "
+                "to a Workspace Owner or Admin to change team members' time and tasks."
+            )
+
+        raise HTTPException(
+            status_code=404 if status == 404 else 502,
+            detail=f"Couldn't {action} in ClickUp: {message or f'error {status}'}",
+        ) from error
+    except requests.RequestException as error:
+        raise HTTPException(status_code=502, detail=f"Couldn't reach ClickUp to {action}.") from error
 
 
 # --------------------------------------------------
@@ -310,17 +345,19 @@ def _closed_status(list_id):
 
 @router.get("/me/tasks")
 def my_tasks(member=Depends(current_member)):
-    return {"tasks": get_assigned_tasks(member["clickup_user_id"])}
+    with clickup_errors("load your tasks"):
+        return {"tasks": get_assigned_tasks(member["clickup_user_id"])}
 
 
 @router.post("/me/tasks/{task_id}/complete")
 def complete_task(task_id: str, member=Depends(current_member)):
     """Move a task to its list's complete status in ClickUp."""
-    task = _assigned_task(task_id, member["clickup_user_id"])
-    previous_status = (task.get("status") or {}).get("status")
-    status = _closed_status((task.get("list") or {}).get("id"))
+    with clickup_errors("complete the task"):
+        task = _assigned_task(task_id, member["clickup_user_id"])
+        previous_status = (task.get("status") or {}).get("status")
+        status = _closed_status((task.get("list") or {}).get("id"))
 
-    _clickup_put(f"/task/{task_id}", {"status": status})
+        _clickup_put(f"/task/{task_id}", {"status": status})
     return {"id": task_id, "status": status, "previous_status": previous_status}
 
 
@@ -331,9 +368,9 @@ class ReopenRequest(BaseModel):
 @router.post("/me/tasks/{task_id}/reopen")
 def reopen_task(task_id: str, body: ReopenRequest, member=Depends(current_member)):
     """Undo a completion by putting the task back in the status it had."""
-    _assigned_task(task_id, member["clickup_user_id"])
-
-    _clickup_put(f"/task/{task_id}", {"status": body.status})
+    with clickup_errors("reopen the task"):
+        _assigned_task(task_id, member["clickup_user_id"])
+        _clickup_put(f"/task/{task_id}", {"status": body.status})
     return {"id": task_id, "status": body.status}
 
 
@@ -357,8 +394,46 @@ def submit_my_availability(body: PreferenceRequest, member=Depends(current_membe
 
 
 # --------------------------------------------------
-# Time blocks on the member's day calendar
+# Tracked time on the member's day calendar, kept as ClickUp time entries
 # --------------------------------------------------
+
+def _time_entries_path(entry_id=None):
+    path = f"/team/{workspace_id}/time_entries"
+    return f"{path}/{entry_id}" if entry_id else path
+
+
+def _to_block(entry, task_name=None, space=None):
+    """A ClickUp time entry as a calendar block."""
+    task = entry.get("task") or {}
+    if not isinstance(task, dict):  # ClickUp sends "" for no task
+        task = {}
+    location = entry.get("task_location") or {}
+    start = int(entry.get("start") or 0)
+    duration = int(entry.get("duration") or 0)
+    running = duration < 0  # a timer still running in ClickUp
+
+    return {
+        "id": str(entry["id"]),
+        "task_id": task.get("id"),
+        "title": task_name or task.get("name") or entry.get("description") or "No task",
+        "space": space or location.get("space_name"),
+        "description": entry.get("description") or "",
+        "billable": bool(entry.get("billable")),
+        "start": start,
+        "end": int(entry["end"]) if entry.get("end") and not running else start + max(duration, 0),
+        "running": running,
+    }
+
+
+def _own_entry(entry_id, clickup_user_id):
+    """A time entry, but only if it's this member's."""
+    entry = _clickup_get(_time_entries_path(entry_id)).get("data")
+    if isinstance(entry, list):
+        entry = entry[0] if entry else None
+    if not entry or str((entry.get("user") or {}).get("id")) != clickup_user_id:
+        raise HTTPException(status_code=404, detail="Time entry not found.")
+    return entry
+
 
 class TimeBlockRequest(BaseModel):
     # Every block is for one ClickUp task; its name is the block's title
@@ -366,6 +441,7 @@ class TimeBlockRequest(BaseModel):
     task_name: str
     space: str | None = None
     description: str = ""
+    billable: bool = False
     start: int  # milliseconds since the epoch
     end: int
 
@@ -376,58 +452,86 @@ def _validate_block(body):
     if body.end <= body.start:
         raise HTTPException(status_code=400, detail="The end time must be after the start time.")
 
-    return {
-        "task_id": body.task_id.strip(),
-        "title": body.task_name.strip(),
-        "space": (body.space or "").strip() or None,
-        "description": body.description.strip(),
-        "start": body.start,
-        "end": body.end,
-    }
-
 
 @router.get("/me/time-blocks")
 def my_time_blocks(start: int, end: int, member=Depends(current_member)):
-    """Blocks that overlap [start, end), in milliseconds."""
-    blocks = _read_json(TIME_BLOCKS_PATH).get(member["clickup_user_id"], [])
-    return {"time_blocks": [block for block in blocks if block["end"] > start and block["start"] < end]}
+    """The member's ClickUp time entries that start in [start, end), in ms."""
+    with clickup_errors("load your tracked time"):
+        data = _clickup_get(
+            _time_entries_path(),
+            {
+                "start_date": start,
+                "end_date": end,
+                "assignee": member["clickup_user_id"],
+                "include_location_names": "true",
+            },
+        )
+
+    return {"time_blocks": [_to_block(entry) for entry in data.get("data", [])]}
 
 
 @router.post("/me/time-blocks")
 def add_time_block(body: TimeBlockRequest, member=Depends(current_member)):
-    block = {"id": uuid.uuid4().hex, **_validate_block(body)}
+    """Log time to a task in ClickUp."""
+    _validate_block(body)
 
-    with _store_lock:
-        all_blocks = _read_json(TIME_BLOCKS_PATH)
-        all_blocks.setdefault(member["clickup_user_id"], []).append(block)
-        _write_json(TIME_BLOCKS_PATH, all_blocks)
+    with clickup_errors("log this time"):
+        data = _clickup_post(
+            _time_entries_path(),
+            {
+                "tid": body.task_id.strip(),
+                "description": body.description.strip(),
+                "start": body.start,
+                "duration": body.end - body.start,
+                "billable": body.billable,
+                "assignee": int(member["clickup_user_id"]),
+            },
+        )
 
-    return block
+    # ClickUp's reply may leave out fields we sent, like the task
+    entry = data.get("data") or data
+    if not isinstance(entry.get("task"), dict):
+        entry["task"] = {"id": body.task_id.strip(), "name": body.task_name.strip()}
+    entry.setdefault("start", body.start)
+    entry.setdefault("duration", body.end - body.start)
+    entry.setdefault("description", body.description.strip())
+    entry.setdefault("billable", body.billable)
+    return _to_block(entry, task_name=body.task_name.strip(), space=body.space)
 
 
 @router.put("/me/time-blocks/{block_id}")
 def update_time_block(block_id: str, body: TimeBlockRequest, member=Depends(current_member)):
-    with _store_lock:
-        all_blocks = _read_json(TIME_BLOCKS_PATH)
-        for block in all_blocks.get(member["clickup_user_id"], []):
-            if block["id"] == block_id:
-                block.update(_validate_block(body))
-                _write_json(TIME_BLOCKS_PATH, all_blocks)
-                return block
+    _validate_block(body)
 
-    raise HTTPException(status_code=404, detail="Time entry not found.")
+    with clickup_errors("update this time"):
+        entry = _own_entry(block_id, member["clickup_user_id"])
+        _clickup_put(
+            _time_entries_path(block_id),
+            {
+                "tid": body.task_id.strip(),
+                "description": body.description.strip(),
+                "start": body.start,
+                "end": body.end,
+                "duration": body.end - body.start,
+                "billable": body.billable,
+            },
+        )
+
+    entry.update({
+        "description": body.description.strip(),
+        "start": body.start,
+        "end": body.end,
+        "duration": body.end - body.start,
+        "billable": body.billable,
+        "task": {"id": body.task_id.strip(), "name": body.task_name.strip()},
+    })
+    return _to_block(entry, task_name=body.task_name.strip(), space=body.space)
 
 
 @router.delete("/me/time-blocks/{block_id}")
 def delete_time_block(block_id: str, member=Depends(current_member)):
-    with _store_lock:
-        all_blocks = _read_json(TIME_BLOCKS_PATH)
-        blocks = all_blocks.get(member["clickup_user_id"], [])
-        remaining = [block for block in blocks if block["id"] != block_id]
-        if len(remaining) == len(blocks):
-            raise HTTPException(status_code=404, detail="Time entry not found.")
-
-        all_blocks[member["clickup_user_id"]] = remaining
-        _write_json(TIME_BLOCKS_PATH, all_blocks)
+    with clickup_errors("delete this time"):
+        _own_entry(block_id, member["clickup_user_id"])
+        _clickup_delete(_time_entries_path(block_id))
 
     return {"deleted": block_id}

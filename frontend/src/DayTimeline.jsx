@@ -82,8 +82,9 @@ const DEFAULT_POINT_X = 160
 
 // Single-day calendar view, like Google Calendar's day view. Click an
 // empty spot (or a green activity stretch) to track time there, or an
-// entry to edit it; a popover opens beside it. Every entry is for one of
-// the member's ClickUp tasks, and is saved to the backend.
+// entry to edit it; a popover opens beside it. Every entry is a ClickUp
+// time entry on one of the member's tasks, so it counts everywhere ClickUp
+// time does, including the admin dashboard.
 function DayTimeline({ token, tasks = [], onUnauthorized }) {
   const [day, setDay] = useState(() => startOfDay(new Date()))
   const [now, setNow] = useState(() => Date.now())
@@ -131,6 +132,7 @@ function DayTimeline({ token, tasks = [], onUnauthorized }) {
       task_name: block.title,
       space: block.space,
       description: block.description,
+      billable: block.billable,
       start: block.start,
       end: block.end,
     }
@@ -158,6 +160,7 @@ function DayTimeline({ token, tasks = [], onUnauthorized }) {
         title: "",
         space: null,
         description: "",
+        billable: false,
         start,
         end: Math.min(end, dayEnd),
       },
@@ -211,8 +214,11 @@ function DayTimeline({ token, tasks = [], onUnauthorized }) {
 
   const draft =
     editing && !editing.block.id ? [{ ...editing.block, id: DRAFT_ID }] : []
+  const shownBlocks = blocks.map((block) =>
+    block.running ? { ...block, end: Math.max(now, block.start + MINUTE) } : block
+  )
   const dayEvents = layOutColumns(
-    [...blocks, ...draft].filter((event) => event.end > dayStart && event.start < dayEnd)
+    [...shownBlocks, ...draft].filter((event) => event.end > dayStart && event.start < dayEnd)
   ).map((event) => {
       const start = Math.max(event.start, dayStart)
       const end = Math.min(event.end, dayEnd)
@@ -351,6 +357,23 @@ function DayTimeline({ token, tasks = [], onUnauthorized }) {
                 height: event.height,
                 left: `calc(${(event.column / event.columns) * 100}% + 2px)`,
                 width: `calc(${100 / event.columns}% - 4px)`,
+              }
+
+              // A timer still running in ClickUp: shown up to now, edited there
+              if (event.running) {
+                return (
+                  <div
+                    key={event.id}
+                    className="day-timeline-event running"
+                    style={style}
+                    title="Timer running in ClickUp"
+                  >
+                    <span className="day-timeline-event-title">{event.title}</span>
+                    <span className="day-timeline-event-time">
+                      {formatTime(event.start)} – now · running in ClickUp
+                    </span>
+                  </div>
+                )
               }
 
               if (event.id === DRAFT_ID) {

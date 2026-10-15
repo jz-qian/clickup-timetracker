@@ -836,6 +836,12 @@ td:first-child {
   box-shadow: 0 0 0 2px #b8c8ff;
 }
 
+.day-timeline-event.running {
+  border-left-color: #28a479;
+  background: #e8f7f1;
+  cursor: default;
+}
+
 /* The new entry while its popover is open */
 .day-timeline-event.draft {
   z-index: 2;
@@ -982,6 +988,32 @@ td:first-child {
 .time-block-form textarea {
   padding: 9px 12px;
   resize: vertical;
+}
+
+.time-block-form .time-block-billable {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  color: #3d4656;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.time-block-form .time-block-billable input {
+  width: 16px;
+  min-height: 0;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  accent-color: #28a479;
+}
+
+.time-block-note {
+  margin: 0;
+  color: #8a93a2;
+  font-size: 0.74rem;
 }
 
 .time-block-times {

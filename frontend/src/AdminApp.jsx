@@ -43,7 +43,12 @@ function normalizeTimeEntries(entries) {
 
     start: Number(entry.start),
     end: Number(entry.end),
-    duration: Number(entry.duration),
+    // A timer still running in ClickUp has a negative duration; count the
+    // time elapsed so far instead
+    duration:
+      Number(entry.duration) < 0
+        ? Math.max(Date.now() - Number(entry.start), 0)
+        : Number(entry.duration),
 
     spaceId: entry.task_location?.space_id || null,
     spaceName: entry.task_location?.space_name || "Unknown space",
