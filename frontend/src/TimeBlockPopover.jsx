@@ -76,6 +76,7 @@ function TimeBlockPopover({
   const [space, setSpace] = useState(block.task_id ? block.space || "Other" : "")
   const [taskId, setTaskId] = useState(block.task_id || "")
   const [description, setDescription] = useState(block.description || "")
+  const [billable, setBillable] = useState(Boolean(block.billable))
   const [startTime, setStartTime] = useState(toTimeInput(block.start))
   const [endTime, setEndTime] = useState(toTimeInput(block.end))
   const [error, setError] = useState(null)
@@ -155,6 +156,7 @@ function TimeBlockPopover({
         title: task.name,
         space: task.space || null,
         description: description.trim(),
+        billable,
         start,
         end,
       })
@@ -272,6 +274,17 @@ function TimeBlockPopover({
           onChange={(event) => setDescription(event.target.value)}
           placeholder="Notes about this time"
         />
+
+        <label className="time-block-billable">
+          <input
+            type="checkbox"
+            checked={billable}
+            onChange={(event) => setBillable(event.target.checked)}
+          />
+          Billable
+        </label>
+
+        <p className="time-block-note">Saved to this task's time in ClickUp.</p>
 
         {error && (
           <p className="access-error" role="alert">

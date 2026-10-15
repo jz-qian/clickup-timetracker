@@ -270,8 +270,10 @@ def _clickup_get(path, params=None):
     return response.json()
 
 
-def _clickup_put(path, body):
-    response = _session.put(
+def _clickup_request(method, path, body=None):
+    """A ClickUp API call that changes something (POST, PUT or DELETE)."""
+    response = _session.request(
+        method,
         f"{BASE_URL}{path}",
         headers={
             "Authorization": token,
@@ -281,7 +283,19 @@ def _clickup_put(path, body):
         timeout=30,
     )
     response.raise_for_status()
-    return response.json()
+    return response.json() if response.content else {}
+
+
+def _clickup_put(path, body):
+    return _clickup_request("PUT", path, body)
+
+
+def _clickup_post(path, body):
+    return _clickup_request("POST", path, body)
+
+
+def _clickup_delete(path):
+    return _clickup_request("DELETE", path)
 
 
 def _to_ms(value):
