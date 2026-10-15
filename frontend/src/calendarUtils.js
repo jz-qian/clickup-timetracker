@@ -23,6 +23,22 @@ export function startOfWeek(date) {
   return addDays(day, -day.getDay())
 }
 
+// Monday of the week, as "YYYY-MM-DD" in local time. The weekly
+// "Want more tasks?" question runs Monday to Sunday.
+export function mondayOf(date) {
+  const day = startOfDay(date)
+  const monday = addDays(day, -((day.getDay() + 6) % 7))
+  const month = String(monday.getMonth() + 1).padStart(2, "0")
+  const dayOfMonth = String(monday.getDate()).padStart(2, "0")
+  return `${monday.getFullYear()}-${month}-${dayOfMonth}`
+}
+
+// A "YYYY-MM-DD" date as a local Date at midnight
+export function fromISODate(value) {
+  const [year, month, day] = value.split("-").map(Number)
+  return new Date(year, month - 1, day)
+}
+
 export function startOfMonth(date) {
   const day = startOfDay(date)
   day.setDate(1)

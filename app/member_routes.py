@@ -22,6 +22,7 @@ import hmac
 import json
 import secrets
 import threading
+import time
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
@@ -37,7 +38,12 @@ from app.clickup import (
     normalize_workspace_members,
     workspace_id,
 )
-from app.team_routes import load_latest_availability, record_availability
+from app.team_routes import (
+    availability_history,
+    load_weekly_availability,
+    parse_week_start,
+    record_availability,
+)
 
 router = APIRouter()
 
@@ -279,10 +285,28 @@ def me(member=Depends(current_member)):
 # Assigned ClickUp tasks
 # --------------------------------------------------
 
+SPACE_NAMES_TTL_SECONDS = 10 * 60
+_space_names_cache = {"names": None, "fetched_at": 0.0}
+
+
 def _space_names():
-    """ClickUp space names by id. Tasks only carry their space's id."""
-    data = _clickup_get(f"/team/{workspace_id}/space", {"archived": "false"})
-    return {space["id"]: space.get("name") for space in data.get("spaces", [])}
+    """
+    ClickUp space names by id. Tasks only carry their space's id. Cached
+    for a while, since the page re-checks tasks every 30 seconds and
+    spaces rarely change.
+    """
+    now = time.monotonic()
+    if (
+        _space_names_cache["names"] is None
+        or now - _space_names_cache["fetched_at"] > SPACE_NAMES_TTL_SECONDS
+    ):
+        data = _clickup_get(f"/team/{workspace_id}/space", {"archived": "false"})
+        _space_names_cache["names"] = {
+            space["id"]: space.get("name") for space in data.get("spaces", [])
+        }
+        _space_names_cache["fetched_at"] = now
+
+    return _space_names_cache["names"]
 
 
 def get_assigned_tasks(clickup_user_id):
@@ -383,16 +407,29 @@ def reopen_task(task_id: str, body: ReopenRequest, member=Depends(current_member
 class PreferenceRequest(BaseModel):
     preference: str
     note: str = ""
+    week_start: str | None = None  # the member's local Monday, YYYY-MM-DD
+
+
+def _my_weekly_answers(clickup_user_id, week_start):
+    answers = load_weekly_availability().get(clickup_user_id, {})
+    return {
+        "week_start": week_start.isoformat(),
+        "current": answers.get(week_start.isoformat()),
+        "history": availability_history(answers, week_start),
+    }
 
 
 @router.get("/me/availability")
-def my_availability(member=Depends(current_member)):
-    return {"latest": load_latest_availability().get(member["clickup_user_id"])}
+def my_availability(week_start: str | None = None, member=Depends(current_member)):
+    """This week's "Want more tasks?" answer and the weeks before it."""
+    return _my_weekly_answers(member["clickup_user_id"], parse_week_start(week_start))
 
 
 @router.post("/me/availability")
 def submit_my_availability(body: PreferenceRequest, member=Depends(current_member)):
-    return {"latest": record_availability(member["clickup_user_id"], body.preference, body.note)}
+    week_start = parse_week_start(body.week_start)
+    record_availability(member["clickup_user_id"], body.preference, body.note, week_start)
+    return _my_weekly_answers(member["clickup_user_id"], week_start)
 
 
 # --------------------------------------------------

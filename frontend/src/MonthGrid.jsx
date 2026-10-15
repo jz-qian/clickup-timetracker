@@ -38,10 +38,10 @@ function MonthGrid({ days, month, blocks, tasks, now, editingId, onNewBlock, onO
             const tracked = entries
               .filter((entry) => entry.id !== DRAFT_ID)
               .reduce((total, entry) => total + entry.clippedEnd - entry.clippedStart, 0)
-            // A new entry's marker always shows, so its popover has an anchor
-            const draft = entries.filter((entry) => entry.id === DRAFT_ID)
+            // A new entry isn't listed until it's saved; an invisible
+            // anchor over the cell is what its popover points at
+            const hasDraft = entries.some((entry) => entry.id === DRAFT_ID)
             const items = [
-              ...draft.map((entry) => ({ kind: "entry", entry })),
               ...deadlines.map((task) => ({ kind: "deadline", task })),
               ...entries
                 .filter((entry) => entry.id !== DRAFT_ID)
@@ -84,18 +84,13 @@ function MonthGrid({ days, month, blocks, tasks, now, editingId, onNewBlock, onO
                   )}
                 </div>
 
+                {hasDraft && (
+                  <span data-block-id={DRAFT_ID} className="draft-anchor" aria-hidden="true" />
+                )}
+
                 {shown.map((item) =>
                   item.kind === "deadline" ? (
                     <DeadlineChip key={`deadline-${item.task.id}`} task={item.task} now={now} />
-                  ) : item.entry.id === DRAFT_ID ? (
-                    <span
-                      key={DRAFT_ID}
-                      data-block-id={DRAFT_ID}
-                      className="month-entry draft"
-                      aria-hidden="true"
-                    >
-                      New entry
-                    </span>
                   ) : (
                     <button
                       key={item.entry.id}

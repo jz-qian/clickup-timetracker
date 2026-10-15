@@ -22,27 +22,46 @@ function fromTimeInput(value, dayStart, isEnd) {
   return isEnd && time === dayStart ? dayStart + 24 * 60 * MINUTE : time
 }
 
-// Where to put the popover next to its anchor block: beside the clicked
-// point, flipping left when there's no room on the right, and kept on
-// screen. Returns null for the bottom-sheet layout on small screens.
+// How far the arrow keeps from the popover's top and bottom corners
+const ARROW_INSET = 18
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(value, max))
+}
+
+// Where to put the popover beside its anchor: to the right of the clicked
+// point, or the left when there's no room, with an arrow on that edge
+// pointing back at the entry. `side` says which edge has the arrow
+// ("left" when the popover is to the right of the anchor), or is null
+// when neither side fits or the anchor is scrolled out of view.
+// Returns null for the bottom-sheet layout on small screens.
 function placeNextTo(anchor, pointX, popover) {
   if (window.innerWidth < SHEET_BREAKPOINT || !anchor || !popover) return null
 
   const rect = anchor.getBoundingClientRect()
   const width = popover.offsetWidth
   const height = popover.offsetHeight
-  const x = rect.left + pointX
+  const x = clamp(rect.left + pointX, rect.left, rect.right)
+  // Point at the top of the entry, or the middle of a short one
+  const pointY = rect.top + Math.min(rect.height / 2, 20)
 
+  let side = "left"
   let left = x + GAP
-  if (left + width > window.innerWidth - EDGE) left = x - width - GAP
-  left = Math.max(EDGE, Math.min(left, window.innerWidth - width - EDGE))
+  if (left + width > window.innerWidth - EDGE) {
+    side = "right"
+    left = x - width - GAP
+  }
+  if (left < EDGE) {
+    side = null
+    left = clamp(left, EDGE, window.innerWidth - width - EDGE)
+  }
 
-  const top = Math.max(
-    EDGE,
-    Math.min(rect.top - GAP, window.innerHeight - height - EDGE)
-  )
+  // Line the arrow up near the popover's top, keeping it all on screen
+  const top = clamp(pointY - ARROW_INSET - 10, EDGE, window.innerHeight - height - EDGE)
+  const arrowTop = pointY - top
+  if (arrowTop < ARROW_INSET || arrowTop > height - ARROW_INSET) side = null
 
-  return { left, top }
+  return { left, top, side, arrowTop }
 }
 
 // Popover anchored to a block on the day calendar, for tracking time
@@ -208,13 +227,19 @@ function TimeBlockPopover({
   return (
     <div
       ref={popoverRef}
-      className={isSheet ? "time-block-popover sheet" : "time-block-popover"}
+      className={[
+        "time-block-popover",
+        isSheet && "sheet",
+        position?.side && `arrow-${position.side}`,
+      ]
+        .filter(Boolean)
+        .join(" ")}
       role="dialog"
       aria-labelledby="time-block-popover-title"
       tabIndex={-1}
       style={
         position
-          ? { left: position.left, top: position.top }
+          ? { left: position.left, top: position.top, "--arrow-top": `${position.arrowTop}px` }
           : isSheet
             ? undefined
             : { visibility: "hidden" }

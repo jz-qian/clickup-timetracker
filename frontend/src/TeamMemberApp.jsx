@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { apiFetch } from "./api.js"
 import Calendar from "./Calendar.jsx"
+import { fromISODate, mondayOf } from "./calendarUtils.js"
+import { useLiveRefresh } from "./liveRefresh.js"
 
 const PREFERENCE_OPTIONS = [
   { value: "up", symbol: "↑", label: "Open to more hours" },
@@ -8,21 +10,42 @@ const PREFERENCE_OPTIONS = [
   { value: "down", symbol: "↓", label: "Less hours" },
 ]
 
-// Up / dash / down buttons. The latest answer feeds the admin page's
-// Team Capacity view.
+const SYMBOLS = Object.fromEntries(
+  PREFERENCE_OPTIONS.map((option) => [option.value, option.symbol])
+)
+
+function shortDate(isoDate) {
+  return fromISODate(isoDate).toLocaleDateString([], { month: "short", day: "numeric" })
+}
+
+// "Want more tasks?", asked once a week (Monday to Sunday). This week's
+// answer feeds the admin page's Team Capacity view, and earlier weeks
+// show underneath so the answers can be followed week to week.
 function AvailabilityCard({ token, onUnauthorized }) {
-  const [latest, setLatest] = useState(null)
+  const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()))
+  const [current, setCurrent] = useState(null)
+  const [history, setHistory] = useState([])
   const [saving, setSaving] = useState(null)
   const [error, setError] = useState(null)
 
-  useEffect(() => {
-    apiFetch("/me/availability", { token })
-      .then((data) => setLatest(data.latest))
+  const load = useCallback(() => {
+    // A new week starts a new question, even on a page left open
+    const week = mondayOf(new Date())
+    apiFetch(`/me/availability?week_start=${week}`, { token })
+      .then((data) => {
+        setWeekStart(week)
+        setCurrent(data.current)
+        setHistory(data.history)
+        setError(null)
+      })
       .catch((requestError) => {
         if (requestError.status === 401) onUnauthorized()
         setError(requestError.message)
       })
   }, [token, onUnauthorized])
+
+  useEffect(load, [load])
+  useLiveRefresh(load)
 
   const choose = async (preference) => {
     setSaving(preference)
@@ -31,9 +54,10 @@ function AvailabilityCard({ token, onUnauthorized }) {
       const data = await apiFetch("/me/availability", {
         token,
         method: "POST",
-        body: { preference },
+        body: { preference, week_start: weekStart },
       })
-      setLatest(data.latest)
+      setCurrent(data.current)
+      setHistory(data.history)
     } catch (requestError) {
       if (requestError.status === 401) onUnauthorized()
       setError(requestError.message)
@@ -42,17 +66,24 @@ function AvailabilityCard({ token, onUnauthorized }) {
     }
   }
 
+  // Earlier weeks, oldest first, not counting this one
+  const pastWeeks = history.filter((week) => week.week_start !== weekStart)
+  const answered = Boolean(current)
+
   return (
-    <section className="member-card panel" aria-labelledby="availability-title">
-      <p className="section-kicker">YOUR HOURS</p>
+    <section
+      className={answered ? "member-card panel" : "member-card panel unanswered"}
+      aria-labelledby="availability-title"
+    >
+      <p className="section-kicker">WEEK OF {shortDate(weekStart).toUpperCase()}</p>
       <h2 id="availability-title">Want more tasks?</h2>
 
-      <div className="availability-buttons" role="group" aria-label="Want more tasks?">
+      <div className="availability-buttons" role="group" aria-label="Want more tasks this week?">
         {PREFERENCE_OPTIONS.map((option) => (
           <button
             key={option.value}
             className={`availability-button availability-${option.value}`}
-            aria-pressed={latest?.preference === option.value}
+            aria-pressed={current?.preference === option.value}
             aria-label={option.label}
             title={option.label}
             disabled={saving !== null}
@@ -66,10 +97,35 @@ function AvailabilityCard({ token, onUnauthorized }) {
       <p className="member-card-note">
         {error
           ? error
-          : latest
-            ? `${PREFERENCE_OPTIONS.find((option) => option.value === latest.preference)?.label ?? latest.preference} · ${new Date(latest.submitted_at).toLocaleDateString()}`
-            : "No answer yet."}
+          : answered
+            ? `${PREFERENCE_OPTIONS.find((option) => option.value === current.preference)?.label ?? current.preference} this week. You can change it until Sunday.`
+            : "You haven't answered for this week yet."}
       </p>
+
+      {pastWeeks.length > 0 && (
+        <div className="availability-history">
+          <p className="availability-history-label">Earlier weeks</p>
+          <ol className="availability-history-list">
+            {pastWeeks.map((week) => (
+              <li
+                key={week.week_start}
+                className={
+                  week.preference ? `availability-${week.preference}` : "availability-none"
+                }
+                title={`Week of ${shortDate(week.week_start)}: ${
+                  PREFERENCE_OPTIONS.find((option) => option.value === week.preference)
+                    ?.label ?? "no answer"
+                }`}
+              >
+                <span className="availability-history-symbol" aria-hidden="true">
+                  {SYMBOLS[week.preference] ?? "·"}
+                </span>
+                <span className="availability-history-week">{shortDate(week.week_start)}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
     </section>
   )
 }
@@ -209,14 +265,38 @@ function TeamMemberApp({ session, onSignOut }) {
   // Completed tasks drop out of the time-entry task picker
   const openTasks = (tasks || []).filter((task) => !completed[task.id])
 
+  const completedRef = useRef(completed)
   useEffect(() => {
+    completedRef.current = completed
+  })
+
+  // Load tasks now and keep them live: deadlines, new assignments and
+  // tasks closed in ClickUp show up without reloading the page
+  const loadTasks = useCallback(() => {
     apiFetch("/me/tasks", { token })
-      .then((data) => setTasks(data.tasks))
+      .then((data) => {
+        setTasks((current) => {
+          // Tasks ticked off here stay listed (crossed out, with undo)
+          // even though ClickUp no longer returns them as open
+          const ticked = (current || []).filter(
+            (task) =>
+              completedRef.current[task.id] &&
+              !data.tasks.some((fresh) => fresh.id === task.id)
+          )
+          return [...data.tasks, ...ticked].sort(
+            (a, b) => Number(a.date_created || 0) - Number(b.date_created || 0)
+          )
+        })
+        setTasksError(null)
+      })
       .catch((error) => {
         if (error.status === 401) onSignOut()
         setTasksError(error.message)
       })
   }, [token, onSignOut])
+
+  useEffect(loadTasks, [loadTasks])
+  useLiveRefresh(loadTasks)
 
   return (
     <div className="dashboard member-dashboard">

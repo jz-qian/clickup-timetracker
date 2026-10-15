@@ -940,6 +940,7 @@ td:first-child {
 }
 
 .month-day {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -1017,12 +1018,6 @@ td:first-child {
 .month-entry:hover,
 .month-entry.selected {
   background: #dfe5fb;
-}
-
-.month-entry.draft {
-  background: #5268d8;
-  color: #fff;
-  font-weight: 650;
 }
 
 .month-entry-time {
@@ -1182,18 +1177,19 @@ td:first-child {
   background: #d9f1e7;
 }
 
-/* The new entry while its popover is open */
-.day-timeline-event.draft {
-  z-index: 2;
-  border-left-color: #3548a8;
-  background: #5268d8;
-  box-shadow: 0 4px 12px rgb(82 104 216 / 30%);
+/* Where a new entry will go while its popover is open. It isn't drawn
+   until it's saved; this invisible box is what the popover points at. */
+.draft-anchor {
+  position: absolute;
+  right: 0;
+  left: 0;
+  visibility: hidden;
   pointer-events: none;
 }
 
-.day-timeline-event.draft .day-timeline-event-title,
-.day-timeline-event.draft .day-timeline-event-time {
-  color: #fff;
+.month-day .draft-anchor {
+  top: 0;
+  bottom: 0;
 }
 
 /* Lines that don't fit a short entry are clipped, not squeezed together */
@@ -1260,22 +1256,50 @@ td:first-child {
   font-size: 0.8rem;
 }
 
-/* Popover beside a block on the day calendar, for tracking time */
+/* Popover beside an entry on the calendar, for tracking time. Like
+   GitHub's popovers: a bordered card with an arrow on the edge facing
+   the entry it opened from. */
 .time-block-popover {
   position: fixed;
   z-index: 20;
   width: 340px;
   max-width: calc(100vw - 16px);
-  max-height: calc(100dvh - 16px);
-  overflow-y: auto;
-  border: 1px solid #e3e7ee;
-  border-radius: 0;
+  border: 1px solid #d0d7de;
+  border-radius: 12px;
   background: #fff;
-  box-shadow: 0 12px 32px rgb(29 42 68 / 16%), 0 2px 6px rgb(29 42 68 / 8%);
+  box-shadow: 0 8px 24px rgb(29 42 68 / 14%), 0 1px 3px rgb(29 42 68 / 8%);
 }
 
 .time-block-popover:focus {
   outline: none;
+}
+
+/* The arrow: a square turned 45° with two of its borders showing,
+   half tucked under the card's edge */
+.time-block-popover.arrow-left::before,
+.time-block-popover.arrow-right::before {
+  position: absolute;
+  top: var(--arrow-top);
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  content: "";
+}
+
+.time-block-popover.arrow-left::before {
+  left: -8px;
+  border-bottom: 1px solid #d0d7de;
+  border-left: 1px solid #d0d7de;
+  border-bottom-left-radius: 2px;
+  transform: translateY(-50%) rotate(45deg);
+}
+
+.time-block-popover.arrow-right::before {
+  right: -8px;
+  border-top: 1px solid #d0d7de;
+  border-right: 1px solid #d0d7de;
+  border-top-right-radius: 2px;
+  transform: translateY(-50%) rotate(45deg);
 }
 
 .time-block-running-task {
@@ -1291,14 +1315,20 @@ td:first-child {
   left: 0;
   width: auto;
   max-width: none;
-  max-height: 85dvh;
   border-radius: 14px 14px 0 0;
   box-shadow: 0 -8px 32px rgb(29 42 68 / 18%);
+}
+
+.time-block-popover.sheet .time-block-form {
+  max-height: 85dvh;
 }
 
 .time-block-form {
   display: grid;
   gap: 7px;
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
+  border-radius: inherit;
   padding: 14px 16px 16px;
 }
 
@@ -1482,6 +1512,70 @@ td:first-child {
 
 .availability-down[aria-pressed="true"] {
   border-color: #d97a3a;
+  background: #fdf1e8;
+  color: #a4501c;
+}
+
+/* This week's question hasn't been answered yet */
+.member-card.unanswered {
+  border-color: #c3ccf3;
+  box-shadow: 0 0 0 3px rgb(82 104 216 / 10%);
+}
+
+.availability-history {
+  margin-top: 14px;
+  border-top: 1px solid #edf0f4;
+  padding-top: 12px;
+}
+
+.availability-history-label {
+  margin: 0 0 8px;
+  color: #697386;
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.availability-history-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.availability-history-list li {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  border-radius: 6px;
+  padding: 4px 0 3px;
+  background: #f5f6f8;
+  color: #8a93a2;
+}
+
+.availability-history-symbol {
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.availability-history-week {
+  font-size: 0.62rem;
+  white-space: nowrap;
+}
+
+.availability-history-list li.availability-up {
+  background: #e8f7f1;
+  color: #227456;
+}
+
+.availability-history-list li.availability-same {
+  background: #eef1fd;
+  color: #3548a8;
+}
+
+.availability-history-list li.availability-down {
   background: #fdf1e8;
   color: #a4501c;
 }

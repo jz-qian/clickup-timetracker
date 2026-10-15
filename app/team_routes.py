@@ -1,9 +1,11 @@
 """
 Team capacity: whether each team member is open to more hours.
 
-Team members submit an up arrow (open to more hours), a down arrow
-(not open to more hours), or a dash (happy with their hours as they are)
-from their own page. Each submission is appended to
+Team members answer "Want more tasks?" once a week from their own page: an
+up arrow (open to more), a down arrow (fewer), or a dash (happy as is).
+Weeks run Monday to Sunday and are named by their Monday's date. Answers
+are tracked week to week, so the admin page shows this week's answer next
+to earlier weeks'. Each submission is appended to
 a log file, and the admin page shows each member's latest answer next to the
 hours they've logged in ClickUp.
 
@@ -12,7 +14,7 @@ Signed-in team members submit through POST /me/availability
 it's sent.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 import json
 import threading
 
@@ -36,20 +38,74 @@ PREFERENCES = {"up", "down", "same"}
 _log_lock = threading.Lock()
 
 
-def load_latest_availability():
-    """Each member's most recent submission, keyed by ClickUp user id."""
-    latest = {}
+# How many earlier weeks the history shows
+HISTORY_WEEKS = 8
+
+
+def current_week_start():
+    """This week's Monday (UTC), as a date."""
+    today = datetime.now(tz=timezone.utc).date()
+    return today - timedelta(days=today.weekday())
+
+
+def parse_week_start(value):
+    """
+    A "YYYY-MM-DD" Monday sent by a browser, which knows the member's own
+    time zone. Missing means this week (UTC).
+    """
+    if not value:
+        return current_week_start()
+
+    try:
+        week_start = date.fromisoformat(value)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="week_start must be a YYYY-MM-DD date.")
+    if week_start.weekday() != 0:
+        raise HTTPException(status_code=400, detail="week_start must be a Monday.")
+
+    return week_start
+
+
+def _entry_week(entry):
+    """The week an answer is for. Answers from before weekly tracking
+    count for the week they were sent in (UTC)."""
+    if entry.get("week_start"):
+        return entry["week_start"]
+
+    sent = datetime.fromisoformat(entry["submitted_at"]).date()
+    return (sent - timedelta(days=sent.weekday())).isoformat()
+
+
+def load_weekly_availability():
+    """Each member's answer per week: {user id: {"YYYY-MM-DD": entry}}.
+    A later answer for the same week replaces an earlier one."""
+    weekly = {}
 
     if not AVAILABILITY_LOG_PATH.exists():
-        return latest
+        return weekly
 
     with AVAILABILITY_LOG_PATH.open() as log_file:
         for line in log_file:
             if line.strip():
                 entry = json.loads(line)
-                latest[entry["clickup_user_id"]] = entry
+                weekly.setdefault(entry["clickup_user_id"], {})[_entry_week(entry)] = entry
 
-    return latest
+    return weekly
+
+
+def availability_history(answers_by_week, week_start, weeks=HISTORY_WEEKS):
+    """The answers for `week_start` and the weeks before it, oldest first.
+    Weeks with no answer have preference None."""
+    history = []
+    for offset in range(weeks - 1, -1, -1):
+        week = (week_start - timedelta(weeks=offset)).isoformat()
+        entry = answers_by_week.get(week)
+        history.append({
+            "week_start": week,
+            "preference": entry["preference"] if entry else None,
+            "submitted_at": entry["submitted_at"] if entry else None,
+        })
+    return history
 
 
 class AvailabilityRequest(BaseModel):
@@ -58,13 +114,19 @@ class AvailabilityRequest(BaseModel):
     note: str = ""
 
 
-def record_availability(clickup_user_id, preference, note=""):
-    """Append one member's answer to the log and return the saved entry."""
+def record_availability(clickup_user_id, preference, note="", week_start=None):
+    """Append one member's answer for a week to the log and return it."""
     if preference not in PREFERENCES:
         raise HTTPException(status_code=400, detail='Preference must be "up", "down" or "same".')
 
+    week_start = week_start or current_week_start()
+    # Only this week can be answered (a day's slack for time zones)
+    if abs((week_start - current_week_start()).days) > 7:
+        raise HTTPException(status_code=400, detail="You can only answer for this week.")
+
     entry = {
         "clickup_user_id": clickup_user_id,
+        "week_start": week_start.isoformat(),
         "preference": preference,
         "note": note.strip(),
         "submitted_at": datetime.now(tz=timezone.utc).isoformat(),
@@ -88,9 +150,13 @@ def submit_availability(body: AvailabilityRequest):
 
 
 @router.get("/admin/team-capacity")
-def team_capacity():
+def team_capacity(week_start: str | None = None):
+    """Hours per member, with this week's "Want more tasks?" answer and
+    earlier weeks'. `week_start` is the admin's local Monday."""
+    question_week = parse_week_start(week_start)
+    last_week = (question_week - timedelta(weeks=1)).isoformat()
+    weekly = load_weekly_availability()
     members = normalize_workspace_members(get_workspace_members())
-    availability = load_latest_availability()
     entries = get_time_entries().get("data", [])
 
     now = datetime.now(tz=timezone.utc)
@@ -118,7 +184,8 @@ def team_capacity():
     for member in members:
         user_id = member["clickup_user_id"]
         totals = hours_by_user.get(user_id, {"week": 0, "last_30_days": 0, "all_time": 0})
-        latest = availability.get(user_id)
+        answers = weekly.get(user_id, {})
+        latest = answers.get(question_week.isoformat())
 
         people.append({
             "clickup_user_id": user_id,
@@ -131,6 +198,8 @@ def team_capacity():
             "preference": latest["preference"] if latest else None,
             "note": latest["note"] if latest else "",
             "submitted_at": latest["submitted_at"] if latest else None,
+            "last_week_preference": (answers.get(last_week) or {}).get("preference"),
+            "history": availability_history(answers, question_week),
         })
 
     people.sort(key=lambda person: person["name"].lower())
@@ -138,6 +207,7 @@ def team_capacity():
     return {
         "generated_at": now.isoformat(),
         "week_start": week_start.date().isoformat(),
+        "question_week_start": question_week.isoformat(),
         "summary": {
             "members": len(people),
             "open_to_more": sum(1 for person in people if person["preference"] == "up"),
