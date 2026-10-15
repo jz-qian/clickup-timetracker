@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { formatTime, startOfDay } from "./calendarUtils.js"
 
 const MINUTE = 60 * 1000
 const GAP = 12
@@ -53,7 +54,6 @@ function TimeBlockPopover({
   block,
   getAnchor,
   pointX,
-  dayStart,
   tasks,
   onSave,
   onDelete,
@@ -61,6 +61,10 @@ function TimeBlockPopover({
 }) {
   const popoverRef = useRef(null)
   const returnFocusRef = useRef(null)
+  const deleteRef = useRef(null)
+  const isNew = !block.id
+  // Times in the form are on the entry's own day
+  const dayStart = startOfDay(block.start).getTime()
   const [position, setPosition] = useState(null)
 
   // A block's task may have been completed since, so it's no longer in
@@ -101,12 +105,26 @@ function TimeBlockPopover({
   }, [getAnchor, pointX, block.start, block.end])
 
   // Escape or a click outside closes it. Focus goes back where it was.
+  // For an existing entry, pressing Delete (or Backspace) deletes it,
+  // unless you're typing in a field.
   useEffect(() => {
     returnFocusRef.current = document.activeElement
     const returnFocus = returnFocusRef.current
 
+    // Focus the popover itself, so Delete works straight away
+    if (block.id) popoverRef.current?.focus({ preventScroll: true })
+
     const onKeyDown = (event) => {
-      if (event.key === "Escape") onClose()
+      if (event.key === "Escape") {
+        onClose()
+        return
+      }
+
+      const typing = event.target.closest?.("input, textarea, select, [contenteditable]")
+      if (block.id && !typing && (event.key === "Delete" || event.key === "Backspace")) {
+        event.preventDefault()
+        deleteRef.current?.()
+      }
     }
     const onPointerDown = (event) => {
       if (!popoverRef.current?.contains(event.target)) onClose()
@@ -119,7 +137,7 @@ function TimeBlockPopover({
       document.removeEventListener("pointerdown", onPointerDown)
       if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true })
     }
-  }, [onClose])
+  }, [onClose, block.id])
 
   const run = async (action) => {
     setBusy(true)
@@ -132,6 +150,14 @@ function TimeBlockPopover({
       setBusy(false)
     }
   }
+
+  const deleteEntry = () => {
+    if (!busy) run(() => onDelete(block))
+  }
+
+  useEffect(() => {
+    deleteRef.current = deleteEntry
+  })
 
   const save = (event) => {
     event.preventDefault()
@@ -177,7 +203,6 @@ function TimeBlockPopover({
     if (name && task && (task.space || "Other") !== name) setTaskId("")
   }
 
-  const isNew = !block.id
   const isSheet = window.innerWidth < SHEET_BREAKPOINT
 
   return (
@@ -186,6 +211,7 @@ function TimeBlockPopover({
       className={isSheet ? "time-block-popover sheet" : "time-block-popover"}
       role="dialog"
       aria-labelledby="time-block-popover-title"
+      tabIndex={-1}
       style={
         position
           ? { left: position.left, top: position.top }
@@ -194,123 +220,163 @@ function TimeBlockPopover({
             : { visibility: "hidden" }
       }
     >
-      <form className="time-block-form" onSubmit={save}>
-        <div className="time-block-popover-header">
-          <h2 id="time-block-popover-title">
-            {isNew ? "Track time" : "Edit tracked time"}
-          </h2>
-          <button
-            type="button"
-            className="icon-button"
-            aria-label="Close"
-            onClick={onClose}
-          >
-            ×
-          </button>
-        </div>
-
-        <label htmlFor="time-block-task">ClickUp task</label>
-        <select
-          id="time-block-task"
-          value={taskId}
-          onChange={(event) => chooseTask(event.target.value)}
-          autoFocus
-          required
-        >
-          <option value="" disabled>
-            {taskOptions.length ? "Choose a task" : "No tasks assigned to you"}
-          </option>
-          {shownTasks.map((task) => (
-            <option key={task.id} value={task.id}>
-              {task.name}
-            </option>
-          ))}
-        </select>
-
-        <label htmlFor="time-block-space">Space</label>
-        <select
-          id="time-block-space"
-          value={space}
-          onChange={(event) => chooseSpace(event.target.value)}
-        >
-          <option value="">All spaces</option>
-          {spaces.map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
-          ))}
-        </select>
-
-        <div className="time-block-times">
-          <div>
-            <label htmlFor="time-block-start">Start</label>
-            <input
-              id="time-block-start"
-              type="time"
-              step="300"
-              value={startTime}
-              onChange={(event) => setStartTime(event.target.value)}
-              required
-            />
+      {block.running ? (
+        <div className="time-block-form">
+          <div className="time-block-popover-header">
+            <h2 id="time-block-popover-title">Timer running</h2>
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Close"
+              onClick={onClose}
+            >
+              ×
+            </button>
           </div>
-          <div>
-            <label htmlFor="time-block-end">End</label>
-            <input
-              id="time-block-end"
-              type="time"
-              step="300"
-              value={endTime}
-              onChange={(event) => setEndTime(event.target.value)}
-              required
-            />
-          </div>
-        </div>
-
-        <label htmlFor="time-block-description">Details</label>
-        <textarea
-          id="time-block-description"
-          rows={3}
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
-          placeholder="Notes about this time"
-        />
-
-        <label className="time-block-billable">
-          <input
-            type="checkbox"
-            checked={billable}
-            onChange={(event) => setBillable(event.target.checked)}
-          />
-          Billable
-        </label>
-
-        <p className="time-block-note">Saved to this task's time in ClickUp.</p>
-
-        {error && (
-          <p className="access-error" role="alert">
-            {error}
+          <p className="time-block-running-task">{block.title}</p>
+          <p className="time-block-note">
+            {block.space && `${block.space} · `}Started {formatTime(block.start)}.
+            Stop or edit it in ClickUp, or delete it here.
           </p>
-        )}
-
-        <div className="time-block-actions">
-          {!isNew && (
+          {error && (
+            <p className="access-error" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="time-block-actions">
             <button
               type="button"
               className="danger-button"
               disabled={busy}
-              onClick={() => run(() => onDelete(block))}
+              onClick={deleteEntry}
             >
-              Delete
+              {busy ? "Deleting…" : "Delete"}
             </button>
-          )}
-          <button type="button" className="secondary-button" onClick={onClose}>
-            Cancel
-          </button>
-          <button type="submit" className="primary-button" disabled={busy}>
-            {busy ? "Saving…" : "Save"}
-          </button>
+            <button type="button" className="secondary-button" onClick={onClose}>
+              Close
+            </button>
+          </div>
         </div>
-      </form>
+      ) : (
+        <form className="time-block-form" onSubmit={save}>
+          <div className="time-block-popover-header">
+            <h2 id="time-block-popover-title">
+              {isNew ? "Track time" : "Edit tracked time"}
+            </h2>
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Close"
+              onClick={onClose}
+            >
+              ×
+            </button>
+          </div>
+
+          <label htmlFor="time-block-task">ClickUp task</label>
+          <select
+            id="time-block-task"
+            value={taskId}
+            onChange={(event) => chooseTask(event.target.value)}
+            autoFocus={isNew}
+            required
+          >
+            <option value="" disabled>
+              {taskOptions.length ? "Choose a task" : "No tasks assigned to you"}
+            </option>
+            {shownTasks.map((task) => (
+              <option key={task.id} value={task.id}>
+                {task.name}
+              </option>
+            ))}
+          </select>
+
+          <label htmlFor="time-block-space">Space</label>
+          <select
+            id="time-block-space"
+            value={space}
+            onChange={(event) => chooseSpace(event.target.value)}
+          >
+            <option value="">All spaces</option>
+            {spaces.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+
+          <div className="time-block-times">
+            <div>
+              <label htmlFor="time-block-start">Start</label>
+              <input
+                id="time-block-start"
+                type="time"
+                step="300"
+                value={startTime}
+                onChange={(event) => setStartTime(event.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label htmlFor="time-block-end">End</label>
+              <input
+                id="time-block-end"
+                type="time"
+                step="300"
+                value={endTime}
+                onChange={(event) => setEndTime(event.target.value)}
+                required
+              />
+            </div>
+          </div>
+
+          <label htmlFor="time-block-description">Details</label>
+          <textarea
+            id="time-block-description"
+            rows={3}
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            placeholder="Notes about this time"
+          />
+
+          <label className="time-block-billable">
+            <input
+              type="checkbox"
+              checked={billable}
+              onChange={(event) => setBillable(event.target.checked)}
+            />
+            Billable
+          </label>
+
+          <p className="time-block-note">Saved to this task's time in ClickUp.</p>
+
+          {error && (
+            <p className="access-error" role="alert">
+              {error}
+            </p>
+          )}
+
+          <div className="time-block-actions">
+            {!isNew && (
+              <button
+                type="button"
+                className="danger-button"
+                disabled={busy}
+                onClick={deleteEntry}
+                title="Delete this entry (Delete key)"
+              >
+                Delete
+              </button>
+            )}
+            <button type="button" className="secondary-button" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="submit" className="primary-button" disabled={busy}>
+              {busy ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </form>
+      )}
     </div>
   )
 }

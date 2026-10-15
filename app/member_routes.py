@@ -318,6 +318,8 @@ def get_assigned_tasks(clickup_user_id):
             "space_id": (task.get("space") or {}).get("id"),
             "space": space_names.get((task.get("space") or {}).get("id")),
             "date_created": task.get("date_created"),
+            # Deadline in ms, shown on the calendar; None when there isn't one
+            "due_date": int(task["due_date"]) if task.get("due_date") else None,
         }
         for task in tasks
     ]

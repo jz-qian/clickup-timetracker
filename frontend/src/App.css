@@ -659,7 +659,10 @@ td:first-child {
 
 /* Day timeline (Google Calendar-style day view) */
 .day-timeline {
+  position: relative;
   overflow: hidden;
+  /* Calendar text is truncated with "…"; don't break dates mid-number */
+  overflow-wrap: normal;
 }
 
 .day-timeline-header {
@@ -681,8 +684,13 @@ td:first-child {
 
 .day-timeline-controls {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+}
+
+.day-timeline-controls button {
+  white-space: nowrap;
 }
 
 .icon-button {
@@ -729,11 +737,342 @@ td:first-child {
   height: min(640px, 70dvh);
   min-height: 280px;
   overflow-y: auto;
-  padding: 10px 6px 10px 0;
+  padding: 0 6px 10px 0;
+}
+
+/* Seven narrow columns scroll sideways on small screens */
+.day-timeline-scroll.week {
+  overflow-x: auto;
+}
+
+.day-timeline-scroll.week .calendar-head,
+.day-timeline-scroll.week .day-timeline-grid {
+  min-width: 720px;
 }
 
 .day-timeline-grid {
   position: relative;
+  margin-top: 10px;
+}
+
+/* One column per day, between the hour labels and the activity gutter */
+.day-timeline-columns {
+  position: absolute;
+  top: 0;
+  right: 12px;
+  bottom: 0;
+  left: 64px;
+  display: grid;
+  grid-template-columns: repeat(var(--day-count, 1), minmax(0, 1fr));
+}
+
+.week .day-timeline-events {
+  border-left: 1px solid #eef0f4;
+}
+
+/* Day names and deadlines above the hours; stays put while scrolling */
+.calendar-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  border-bottom: 1px solid #e7eaf0;
+  padding: 8px 12px 6px 0;
+  background: #fff;
+}
+
+.calendar-head-gutter {
+  flex: 0 0 64px;
+  padding: 3px 8px 0 0;
+  color: #8a93a2;
+  font-size: 0.68rem;
+  font-weight: 650;
+  text-align: right;
+}
+
+.calendar-head-days {
+  display: grid;
+  flex: 1;
+  grid-template-columns: repeat(var(--day-count, 1), minmax(0, 1fr));
+  min-width: 0;
+}
+
+.calendar-head-day {
+  display: grid;
+  align-content: start;
+  gap: 3px;
+  min-width: 0;
+  padding: 0 2px;
+}
+
+.calendar-day-label {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  border: 0;
+  border-radius: 8px;
+  padding: 2px 0 4px;
+  background: none;
+  color: #697386;
+  font-size: 0.7rem;
+  font-weight: 650;
+  text-transform: uppercase;
+}
+
+.calendar-day-label strong {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 50%;
+  color: #252b37;
+  font-size: 1.05rem;
+  font-weight: 650;
+}
+
+.calendar-day-label:hover strong {
+  background: #f0f2f6;
+}
+
+.calendar-day-label.today {
+  color: #3548a8;
+}
+
+.calendar-day-label.today strong {
+  background: #5268d8;
+  color: #fff;
+}
+
+/* A task deadline, like an all-day event */
+.deadline-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  border-radius: 5px;
+  padding: 2px 6px;
+  background: #fdf1e8;
+  color: #8f4416;
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1.35;
+  text-decoration: none;
+}
+
+.deadline-chip:hover {
+  background: #fae3d2;
+}
+
+.deadline-chip.overdue {
+  background: #fdecec;
+  color: #b23b3b;
+}
+
+.deadline-chip.overdue:hover {
+  background: #f9dada;
+}
+
+.deadline-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Day / Week / Month */
+.view-switcher {
+  display: inline-flex;
+  margin-right: 4px;
+  border: 1px solid #dfe4ec;
+  border-radius: 8px;
+  padding: 2px;
+  background: #f7f8fb;
+}
+
+.view-switcher button {
+  min-height: 28px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 11px;
+  background: none;
+  color: #596476;
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
+.view-switcher button:hover {
+  color: #3548a8;
+}
+
+.view-switcher button[aria-pressed="true"] {
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(29 42 68 / 12%);
+  color: #3548a8;
+}
+
+/* Month view */
+.month-grid-scroll {
+  overflow-x: auto;
+}
+
+.month-grid {
+  min-width: 560px;
+}
+
+.month-grid-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  border-bottom: 1px solid #e7eaf0;
+}
+
+.month-grid-weekdays span {
+  padding: 8px 0 6px;
+  color: #697386;
+  font-size: 0.7rem;
+  font-weight: 650;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.month-grid-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-auto-rows: minmax(108px, 1fr);
+}
+
+.month-day {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  border-right: 1px solid #eef0f4;
+  border-bottom: 1px solid #eef0f4;
+  padding: 4px 5px 6px;
+  cursor: copy;
+}
+
+.month-day:nth-child(7n) {
+  border-right: 0;
+}
+
+.month-day:hover {
+  background: rgb(82 104 216 / 2%);
+}
+
+.month-day.outside {
+  background: #fafbfc;
+}
+
+.month-day.outside .month-day-number {
+  color: #a3abb8;
+}
+
+.month-day-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.month-day-number {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: #303746;
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
+.month-day-number:hover {
+  background: #f0f2f6;
+}
+
+.month-day.today .month-day-number {
+  background: #5268d8;
+  color: #fff;
+}
+
+.month-day-total {
+  color: #227456;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.month-entry {
+  display: flex;
+  gap: 5px;
+  min-width: 0;
+  border: 0;
+  border-radius: 5px;
+  padding: 2px 6px;
+  background: #eef1fd;
+  color: #2b3570;
+  font-size: 0.72rem;
+  text-align: left;
+}
+
+.month-entry:hover,
+.month-entry.selected {
+  background: #dfe5fb;
+}
+
+.month-entry.draft {
+  background: #5268d8;
+  color: #fff;
+  font-weight: 650;
+}
+
+.month-entry-time {
+  flex-shrink: 0;
+  color: #5a6390;
+}
+
+.month-entry-title {
+  overflow: hidden;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.month-day-more {
+  align-self: start;
+  border: 0;
+  border-radius: 5px;
+  padding: 1px 6px;
+  background: none;
+  color: #596476;
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.month-day-more:hover {
+  background: #f0f2f6;
+}
+
+/* "Entry deleted · Undo" */
+.calendar-toast {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-radius: 8px;
+  padding: 10px 16px;
+  background: #252b37;
+  box-shadow: 0 8px 24px rgb(29 42 68 / 25%);
+  color: #fff;
+  font-size: 0.84rem;
+  transform: translateX(-50%);
+}
+
+.calendar-toast .link-button {
+  color: #b8c8ff;
+  font-weight: 700;
 }
 
 .day-timeline-hour {
@@ -799,11 +1138,9 @@ td:first-child {
 }
 
 .day-timeline-events {
-  position: absolute;
-  top: 0;
-  right: 12px;
-  bottom: 0;
-  left: 64px;
+  position: relative;
+  min-width: 0;
+  height: 100%;
   cursor: copy;
 }
 
@@ -839,7 +1176,10 @@ td:first-child {
 .day-timeline-event.running {
   border-left-color: #28a479;
   background: #e8f7f1;
-  cursor: default;
+}
+
+.day-timeline-event.running:hover {
+  background: #d9f1e7;
 }
 
 /* The new entry while its popover is open */
@@ -932,6 +1272,16 @@ td:first-child {
   border-radius: 0;
   background: #fff;
   box-shadow: 0 12px 32px rgb(29 42 68 / 16%), 0 2px 6px rgb(29 42 68 / 8%);
+}
+
+.time-block-popover:focus {
+  outline: none;
+}
+
+.time-block-running-task {
+  margin: 0;
+  color: #252b37;
+  font-weight: 650;
 }
 
 /* Small screens: a sheet along the bottom instead */
